@@ -38,7 +38,7 @@ import {
   X,
 } from "lucide-react";
 
-const logoUrl = "/manus-storage/IMG_0113_cc247063.jpeg";
+const logoUrl = "/kiddles-logo.jpeg";
 
 type PageKey =
   | "dashboard"
