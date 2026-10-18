@@ -575,3 +575,34 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .modal-foot { padding: 18px 20px 20px; }
   .modal-foot .button { flex: 1; }
 }
+
+/* Workflow: Tugas Hari Ini */
+.tasks-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 24px; background: linear-gradient(120deg, #fff 0%, #f8fbf5 100%); }
+.tasks-intro h3 { margin: 6px 0 3px; font-size: 20px; letter-spacing: -.04em; }
+.tasks-intro p { margin: 0; color: #8d97a2; font-size: 10px; }
+.tasks-summary { display: flex; min-width: 92px; flex-direction: column; align-items: center; padding-left: 20px; border-left: 1px solid var(--line); }
+.tasks-summary strong { color: var(--lime); font-size: 27px; letter-spacing: -.05em; }
+.tasks-summary span { color: #8d97a2; font-size: 9px; font-weight: 800; }
+.task-list { display: flex; flex-direction: column; gap: 10px; }
+.task-card { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid #e9eaed; border-radius: 15px; background: #fff; box-shadow: 0 4px 16px rgba(29,39,52,.025); transition: opacity .2s ease, transform .2s ease; }
+.task-card:hover { transform: translateY(-1px); }
+.task-card--done { opacity: .58; }
+.task-card--done .task-copy > strong { text-decoration: line-through; }
+.task-icon { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border-radius: 12px; }
+.task-icon--pink, .task-priority--pink { color: var(--pink); background: var(--pink-soft); }
+.task-icon--blue, .task-priority--blue { color: #267ca3; background: var(--blue-soft); }
+.task-icon--lime, .task-priority--lime { color: #5f9629; background: var(--lime-soft); }
+.task-icon--orange, .task-priority--orange { color: #bd7413; background: var(--orange-soft); }
+.task-copy { min-width: 0; flex: 1; }
+.task-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; color: #a0a8b2; font-size: 9px; font-weight: 700; }
+.task-priority { display: inline-flex; padding: 3px 7px; border-radius: 99px; font-size: 8px; font-weight: 900; }
+.task-copy > strong { display: block; color: var(--ink); font-size: 12px; }
+.task-copy p { margin: 4px 0 0; color: #8b95a0; font-size: 10px; line-height: 1.45; }
+.task-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.task-actions .button { min-height: 32px; padding: 0 10px; font-size: 9px; }
+@media (max-width: 720px) {
+  .tasks-intro { align-items: flex-start; }
+  .task-card { align-items: flex-start; flex-wrap: wrap; }
+  .task-copy { flex-basis: calc(100% - 52px); }
+  .task-actions { width: 100%; justify-content: flex-start; padding-left: 52px; }
+}

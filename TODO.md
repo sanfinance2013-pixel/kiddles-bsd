@@ -33,4 +33,5 @@
 ## Kualitas dan branding
 - [x] Responsif mobile-first dengan logo KIDDLES pengguna, format tanggal Indonesia, Rupiah, dan zona waktu Asia/Jakarta.
 - [x] Tombol pengelolaan data contoh tersedia di Pengaturan.
+- [x] Halaman Tugas Hari Ini tersedia di `/tasks`, menampilkan tugas berbeda berdasarkan role Owner, Admin, Guru, dan Murid/Orang Tua; setiap kartu punya tautan tindakan dan status selesai untuk sesi demo.
 - [ ] Hubungkan data layar ke tabel relasional Drizzle dan autentikasi role-based secara penuh pada iterasi backend berikutnya. Layar MVP saat ini sengaja menggunakan data contoh frontend untuk validasi alur dan desain.

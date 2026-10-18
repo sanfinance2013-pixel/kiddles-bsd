@@ -10,6 +10,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/tasks" component={Home} />
       <Route path="/crm" component={Home} />
       <Route path="/schedule" component={Home} />
       <Route path="/attendance" component={Home} />

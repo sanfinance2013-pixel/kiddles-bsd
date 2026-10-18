@@ -15,6 +15,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   ClipboardCheck,
+  ClipboardList,
   Clock3,
   Download,
   ExternalLink,
@@ -42,6 +43,7 @@ const logoUrl = "/kiddles-logo.jpeg";
 
 type PageKey =
   | "dashboard"
+  | "tasks"
   | "crm"
   | "schedule"
   | "attendance"
@@ -63,7 +65,10 @@ type NavItem = {
 const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Utama",
-    items: [{ key: "dashboard", label: "Dashboard", icon: LayoutDashboard }],
+    items: [
+      { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { key: "tasks", label: "Tugas Hari Ini", icon: ClipboardList, badge: "7" },
+    ],
   },
   {
     title: "Operasional",
@@ -133,6 +138,16 @@ const expenseItems = [
   { label: "Flyer trial class", category: "Marketing", amount: 650000, date: "07 Okt 2026", tone: "lime" as Tone },
 ];
 
+const todayTasks = [
+  { id: "task-1", role: "Admin", priority: "Terlambat", title: "Follow-up Kezia Anindya", detail: "Lead baru masuk 26 jam lalu · SLA 24 jam", target: "crm", tone: "pink" as Tone },
+  { id: "task-2", role: "Admin", priority: "Hari ini", title: "Konfirmasi 3 trial minggu ini", detail: "Trial pertama pukul 10:00 · kirim pengingat orang tua", target: "crm", tone: "orange" as Tone },
+  { id: "task-3", role: "Admin", priority: "Prioritas", title: "Tawarkan perpanjangan ke Gabriel", detail: "Sisa 2 sesi · status paket hampir habis", target: "students", tone: "lime" as Tone },
+  { id: "task-4", role: "Admin", priority: "Jatuh tempo", title: "Tindak lanjuti invoice INV-KL-2610148", detail: "Nadine Putri · Rp 1.850.000 · jatuh tempo hari ini", target: "billing", tone: "blue" as Tone },
+  { id: "task-5", role: "Guru", priority: "Hari ini", title: "Isi absensi Primary B — P2", detail: "7 murid terjadwal · Kak Daniel · pukul 10:00", target: "attendance", tone: "blue" as Tone },
+  { id: "task-6", role: "Guru", priority: "Belum diisi", title: "Catat materi kelas Kinder A", detail: "Pertemuan selesai 2 jam lalu · catatan materi wajib", target: "attendance", tone: "pink" as Tone },
+  { id: "task-7", role: "Owner", priority: "Ringkasan", title: "Periksa bentrok jadwal Bu Agnes", detail: "Ruang 01 dan Ruang 02 · Jumat 16:00", target: "schedule", tone: "orange" as Tone },
+];
+
 const money = (value: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
 
@@ -143,6 +158,7 @@ const shortMoney = (value: number) => {
 
 const pathByPage: Record<PageKey, string> = {
   dashboard: "/",
+  tasks: "/tasks",
   crm: "/crm",
   schedule: "/schedule",
   attendance: "/attendance",
@@ -313,6 +329,32 @@ function Dashboard({ onAction, onNavigate }: { onAction: (modal: Exclude<ModalKe
   );
 }
 
+function TasksPage({ role, onNavigate, onNotify }: { role: string; onNavigate: (page: PageKey) => void; onNotify: (message: string) => void }) {
+  const [done, setDone] = useState<string[]>([]);
+  const visibleTasks = todayTasks.filter((task) => role === "Owner" || role === "Murid/Orang Tua" ? task.role === role || task.role === "Admin" : task.role === role);
+  const complete = (taskId: string) => {
+    setDone((current) => current.includes(taskId) ? current : [...current, taskId]);
+    onNotify("Tugas ditandai selesai untuk sesi ini.");
+  };
+  return <div className="page-stack">
+    <SectionHeader eyebrow="Workflow operasional" title="Tugas Hari Ini" description="Pekerjaan yang perlu diselesaikan berdasarkan peran dan prioritas." />
+    <section className="tasks-intro panel">
+      <div><span className="eyebrow">{role}</span><h3>{visibleTasks.filter((task) => !done.includes(task.id)).length} tugas masih terbuka</h3><p>Setiap tugas mengarah langsung ke modul yang perlu ditindaklanjuti.</p></div>
+      <div className="tasks-summary"><strong>{done.length}</strong><span>selesai sesi ini</span></div>
+    </section>
+    <div className="task-list">
+      {visibleTasks.map((task) => {
+        const isDone = done.includes(task.id);
+        return <article className={`task-card ${isDone ? "task-card--done" : ""}`} key={task.id}>
+          <span className={`task-icon task-icon--${task.tone}`}><ClipboardList size={18} /></span>
+          <div className="task-copy"><div className="task-meta"><span className={`task-priority task-priority--${task.tone}`}>{task.priority}</span><span>{task.role}</span></div><strong>{task.title}</strong><p>{task.detail}</p></div>
+          <div className="task-actions">{!isDone && <button className="button button--soft" onClick={() => onNavigate(task.target as PageKey)}>Buka tindakan <ChevronRight size={15} /></button>}<button className={`button ${isDone ? "button--outline" : "button--dark"}`} onClick={() => complete(task.id)}>{isDone ? <><Check size={15} /> Selesai</> : "Tandai selesai"}</button></div>
+        </article>;
+      })}
+    </div>
+  </div>;
+}
+
 function CrmPage({ onAction, query }: { onAction: (modal: Exclude<ModalKey, null>) => void; query: string }) {
   const filtered = leads.filter((lead) => `${lead.name} ${lead.guardian} ${lead.program}`.toLowerCase().includes(query.toLowerCase()));
   const columns = [
@@ -429,7 +471,7 @@ export default function Home() {
     {mobileOpen && <button className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup navigasi" />}
     <main className="main-shell">
       <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div className="breadcrumb"><span>KIDDLES BSD</span><ChevronRight size={14} /><strong>{pageTitle}</strong></div></div><div className="topbar-actions"><label className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari murid, invoice, lead..." /><kbd>⌘ K</kbd></label><button className="icon-button notification-button" onClick={() => notify("Tidak ada notifikasi baru.")} aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="role-select"><select value={role} onChange={(event) => { setRole(event.target.value); notify(`Mode ${event.target.value} aktif.`); }}><option>Owner</option><option>Admin</option><option>Guru</option><option>Murid/Orang Tua</option></select><ChevronDown size={14} /></div><Avatar initials="SA" tone="pink" /></div></header>
-      <div className="page-content"><div className="content-heading-mobile"><span className="eyebrow">Workspace KIDDLES BSD</span><h1>{pageTitle}</h1></div>{!demoVisible && <div className="demo-hidden-banner"><Sparkles size={16} /><span>Data contoh sedang disembunyikan. Anda dapat mengaktifkannya kembali di Pengaturan.</span><button onClick={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }}>Tampilkan kembali</button></div>}{!demoVisible && activePage !== "settings" ? <DemoEmptyState onRestore={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }} /> : <>{activePage === "dashboard" && <Dashboard onAction={openAction} onNavigate={navigate} />}{activePage === "crm" && <CrmPage onAction={openAction} query={query} />}{activePage === "schedule" && <SchedulePage onAction={openAction} />}{activePage === "attendance" && <AttendancePage onNotify={notify} />}{activePage === "students" && <StudentsPage onAction={openAction} query={query} />}{activePage === "billing" && <BillingPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "finance" && <FinancePage onAction={openAction} onNotify={notify} />}{activePage === "portal" && <PortalPage onNotify={notify} />}{activePage === "settings" && <SettingsPage onNotify={notify} onClearDemo={clearDemo} />}</>}</div>
+      <div className="page-content"><div className="content-heading-mobile"><span className="eyebrow">Workspace KIDDLES BSD</span><h1>{pageTitle}</h1></div>{!demoVisible && <div className="demo-hidden-banner"><Sparkles size={16} /><span>Data contoh sedang disembunyikan. Anda dapat mengaktifkannya kembali di Pengaturan.</span><button onClick={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }}>Tampilkan kembali</button></div>}{!demoVisible && activePage !== "settings" ? <DemoEmptyState onRestore={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }} /> : <>{activePage === "dashboard" && <Dashboard onAction={openAction} onNavigate={navigate} />}{activePage === "tasks" && <TasksPage role={role} onNavigate={navigate} onNotify={notify} />} {activePage === "crm" && <CrmPage onAction={openAction} query={query} />}{activePage === "schedule" && <SchedulePage onAction={openAction} />}{activePage === "attendance" && <AttendancePage onNotify={notify} />}{activePage === "students" && <StudentsPage onAction={openAction} query={query} />}{activePage === "billing" && <BillingPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "finance" && <FinancePage onAction={openAction} onNotify={notify} />}{activePage === "portal" && <PortalPage onNotify={notify} />}{activePage === "settings" && <SettingsPage onNotify={notify} onClearDemo={clearDemo} />}</>}</div>
     </main>
     {toast && <div className="toast"><span className="toast-check"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Tutup pesan"><X size={15} /></button></div>}
     {modal && <Modal kind={modal} onClose={() => setModal(null)} onSave={handleSave} />}
