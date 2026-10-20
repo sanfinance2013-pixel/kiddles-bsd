@@ -35,3 +35,13 @@
 - [x] Tombol pengelolaan data contoh tersedia di Pengaturan.
 - [x] Halaman Tugas Hari Ini tersedia di `/tasks`, menampilkan tugas berbeda berdasarkan role Owner, Admin, Guru, dan Murid/Orang Tua; setiap kartu punya tautan tindakan dan status selesai untuk sesi demo.
 - [ ] Hubungkan data layar ke tabel relasional Drizzle dan autentikasi role-based secara penuh pada iterasi backend berikutnya. Layar MVP saat ini sengaja menggunakan data contoh frontend untuk validasi alur dan desain.
+
+## Pendaftaran murid, pembayaran, jadwal, dan QR absensi
+- [ ] Admin dapat mendaftarkan murid dan orang tua/wali; server membuat nomor induk murid unik, paket aktif, kelas, dan invoice.
+- [ ] Paket menyimpan nominal dan jumlah pertemuan; contoh pembayaran Rp1.000.000 untuk 8 pertemuan memberi saldo awal 8 setelah pembayaran diverifikasi Lunas.
+- [ ] Invoice memuat nomor invoice, nomor induk, murid, paket, nominal, status pembayaran, tanggal, dan dapat dicetak dari halaman print-friendly/PDF browser.
+- [ ] Detail murid menampilkan jadwal, riwayat absensi, pembayaran, dan sisa pertemuan.
+- [ ] Absensi dapat dilakukan dengan scan QR murid melalui browser HTTPS atau fallback nomor induk/manual; hanya guru/admin berwenang yang dapat mencatatnya.
+- [ ] Satu absensi Hadir mengurangi sisa pertemuan tepat satu kali; scan ulang untuk pertemuan yang sama tidak mengurangi saldo kedua kali. Izin, Sakit, dan Alpa tidak mengurangi saldo.
+- [ ] Saat sisa pertemuan menjadi 3, status murid berubah menjadi Sesi hampir habis dan tugas perpanjangan dibuat satu kali.
+- [ ] QR tidak memuat data pribadi; server memvalidasi token, murid, kelas, pertemuan aktif, role, dan mencatat activity log.
