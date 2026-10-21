@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation } from "wouter";
 import {
@@ -12,6 +12,7 @@ import {
   BookOpenCheck,
   CalendarClock,
   CalendarDays,
+  Camera,
   Check,
   ChevronDown,
   ChevronRight,
@@ -34,6 +35,7 @@ import {
   Receipt,
   Search,
   ScanLine,
+  ShieldCheck,
   Settings2,
   SlidersHorizontal,
   Sparkles,
@@ -53,6 +55,7 @@ type PageKey =
   | "crm"
   | "schedule"
   | "attendance"
+  | "scan"
   | "students"
   | "billing"
   | "finance"
@@ -82,6 +85,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { key: "crm", label: "Pendaftaran & CRM", icon: UserPlus, badge: "12" },
       { key: "schedule", label: "Jadwal & Kelas", icon: CalendarDays },
       { key: "attendance", label: "Absensi", icon: ClipboardCheck, badge: "3" },
+      { key: "scan", label: "Scan QR", icon: ScanLine },
       { key: "students", label: "Murid", icon: GraduationCap },
     ],
   },
@@ -168,6 +172,7 @@ const pathByPage: Record<PageKey, string> = {
   crm: "/crm",
   schedule: "/schedule",
   attendance: "/attendance",
+  scan: "/scan-qr",
   students: "/students",
   billing: "/billing",
   finance: "/finance",
@@ -383,7 +388,7 @@ const homeItemsByRole: Record<string, HomeIconItem[]> = {
     { label: "Pembayaran", helper: "3 bukti", icon: WalletCards, tone: "blue", page: "billing", badge: "3" },
     { label: "Jadwal", helper: "6 kelas", icon: CalendarDays, tone: "blue", page: "schedule" },
     { label: "Absensi", helper: "3 belum", icon: ClipboardCheck, tone: "lime", page: "attendance", badge: "3" },
-    { label: "Scan QR", helper: "Kelas aktif", icon: ScanLine, tone: "pink", page: "attendance", primary: true },
+    { label: "Scan QR", helper: "Kelas aktif", icon: ScanLine, tone: "pink", page: "scan", primary: true },
     { label: "Tugas", helper: "7 terbuka", icon: ClipboardList, tone: "orange", page: "tasks", badge: "7" },
     { label: "Pengumuman", helper: "Cabang", icon: Megaphone, tone: "blue", page: "settings" },
     { label: "Laporan", helper: "Keuangan", icon: FileBarChart, tone: "ink", page: "finance" },
@@ -391,7 +396,7 @@ const homeItemsByRole: Record<string, HomeIconItem[]> = {
   Guru: [
     { label: "Jadwal Saya", helper: "3 kelas", icon: CalendarDays, tone: "blue", page: "schedule" },
     { label: "Kelas berikutnya", helper: "10:00", icon: CalendarCheck, tone: "orange", page: "schedule" },
-    { label: "Scan QR", helper: "Kelas aktif", icon: ScanLine, tone: "pink", page: "attendance", primary: true },
+    { label: "Scan QR", helper: "Kelas aktif", icon: ScanLine, tone: "pink", page: "scan", primary: true },
     { label: "Absensi", helper: "7 murid", icon: ClipboardCheck, tone: "lime", page: "attendance" },
     { label: "Catatan materi", helper: "1 belum", icon: BookOpen, tone: "blue", page: "attendance" },
     { label: "Evaluasi", helper: "Minggu ini", icon: FileText, tone: "orange", page: "students" },
@@ -412,6 +417,100 @@ const homeAnnouncements = [
   { label: "Promo", title: "Program Conversation Club dibuka", detail: "Ajak keluarga mencoba kelas trial minggu ini.", date: "14 Okt", tone: "lime" as Tone },
 ];
 
+type DetectorResult = { rawValue?: string };
+type DetectorInstance = { detect: (source: HTMLVideoElement) => Promise<DetectorResult[]> };
+type DetectorConstructor = new (options?: { formats?: string[] }) => DetectorInstance;
+
+function ScanQrPage({ onNotify }: { onNotify: (message: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const [cameraState, setCameraState] = useState<"idle" | "starting" | "active" | "blocked">("idle");
+  const [scanMessage, setScanMessage] = useState("Kamera belum dinyalakan.");
+  const [manualCode, setManualCode] = useState("");
+  const [lastCode, setLastCode] = useState("");
+
+  const stopCamera = () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraState("idle");
+  };
+
+  useEffect(() => () => stopCamera(), []);
+
+  const acceptCode = (value: string) => {
+    const normalized = value.trim();
+    if (!normalized) {
+      setScanMessage("Masukkan kode QR atau nomor induk murid.");
+      return;
+    }
+    setLastCode(normalized);
+    setScanMessage("QR terdeteksi dan siap divalidasi oleh server.");
+    onNotify("QR berhasil dibaca. Validasi absensi server akan dipasang pada tahap berikutnya.");
+  };
+
+  const scanFrame = async (detector: DetectorInstance) => {
+    const video = videoRef.current;
+    if (!video || !streamRef.current) return;
+    try {
+      if (video.readyState >= 2) {
+        const result = await detector.detect(video);
+        if (result[0]?.rawValue) {
+          acceptCode(result[0].rawValue);
+          stopCamera();
+          return;
+        }
+      }
+    } catch {
+      setScanMessage("Kamera aktif. Arahkan QR murid ke bingkai scanner.");
+    }
+    frameRef.current = requestAnimationFrame(() => void scanFrame(detector));
+  };
+
+  const startCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraState("blocked");
+      setScanMessage("Browser ini tidak mendukung akses kamera. Gunakan input manual.");
+      return;
+    }
+    setCameraState("starting");
+    setScanMessage("Meminta izin kamera...");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      streamRef.current = stream;
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setCameraState("active");
+      setScanMessage("Kamera aktif. Arahkan QR murid ke bingkai scanner.");
+      const Detector = (window as Window & { BarcodeDetector?: DetectorConstructor }).BarcodeDetector;
+      if (Detector) void scanFrame(new Detector({ formats: ["qr_code"] }));
+      else setScanMessage("Kamera aktif, tetapi browser belum mendukung deteksi QR otomatis. Gunakan input manual.");
+    } catch {
+      setCameraState("blocked");
+      setScanMessage("Akses kamera ditolak atau belum tersedia. Izinkan kamera pada browser HTTPS, lalu coba lagi.");
+    }
+  };
+
+  return <div className="page-stack scanner-page">
+    <SectionHeader eyebrow="Absensi bertahap · Tahap 1" title="Scan QR Murid" description="Buka kamera, arahkan ke QR murid, lalu siapkan kode untuk validasi sesi." />
+    <div className="scanner-layout">
+      <section className="scanner-card panel">
+        <div className="scanner-video-wrap"><video ref={videoRef} className="scanner-video" muted playsInline /><div className="scanner-frame"><span /><span /><span /><span /></div>{cameraState !== "active" && <div className="scanner-placeholder"><Camera size={32} /><strong>{cameraState === "starting" ? "Menyiapkan kamera..." : "Kamera siap digunakan"}</strong><small>{scanMessage}</small></div>}</div>
+        <div className="scanner-status"><span className={`status-dot status-dot--${cameraState === "active" ? "live" : "idle"}`} /><span>{scanMessage}</span></div>
+        <div className="scanner-actions"><button className="button button--dark" onClick={cameraState === "active" ? stopCamera : startCamera}>{cameraState === "active" ? "Matikan kamera" : "Buka kamera"}<Camera size={15} /></button><button className="button button--outline" onClick={() => { setManualCode(""); setLastCode(""); setScanMessage("Siap membaca QR berikutnya."); }}>Reset</button></div>
+      </section>
+      <aside className="scanner-side">
+        <section className="scanner-session panel"><div className="scanner-session-head"><span className="home-kicker"><ShieldCheck size={14} /> Sesi aktif</span><StatusPill tone="lime">QR aktif</StatusPill></div><strong>Primary B — P2</strong><p>Hari ini · 10:00–11:30 · Ruang 03</p><div className="scan-progress"><span><i style={{ width: "71%" }} /></span><small>5 dari 7 murid sudah hadir</small></div></section>
+        <section className="scanner-manual panel"><span className="eyebrow">Fallback</span><h3>Masukkan kode manual</h3><p>Dipakai jika kamera perangkat tidak tersedia atau QR rusak.</p><form onSubmit={(event) => { event.preventDefault(); acceptCode(manualCode); }}><input value={manualCode} onChange={(event) => setManualCode(event.target.value)} placeholder="Contoh: KBS-2026-0008" aria-label="Kode QR atau nomor induk" /><button className="button button--soft" type="submit">Validasi kode</button></form>{lastCode && <div className="scanner-result"><Check size={16} /><span><strong>{lastCode}</strong><small>Menunggu validasi server</small></span></div>}</section>
+      </aside>
+    </div>
+  </div>;
+}
+
 function HomeIconBase({ role, onNavigate, onNotify, onRoleChange }: { role: string; onNavigate: (page: PageKey) => void; onNotify: (message: string) => void; onRoleChange: (nextRole: string) => void }) {
   const [announcementIndex, setAnnouncementIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -431,7 +530,7 @@ function HomeIconBase({ role, onNavigate, onNotify, onRoleChange }: { role: stri
     <div className="home-base-inner">
       <section className={`announcement-card announcement-card--${announcement.tone}`} onTouchStart={(event) => setTouchStart(event.changedTouches[0]?.clientX ?? null)} onTouchEnd={(event) => { if (touchStart === null) return; const delta = (event.changedTouches[0]?.clientX ?? touchStart) - touchStart; if (Math.abs(delta) > 35) nextAnnouncement(delta < 0 ? 1 : -1); setTouchStart(null); }}><div className="announcement-copy"><span className="home-kicker"><Megaphone size={13} /> Pengumuman · {announcement.date}</span><strong>{announcement.title}</strong><p>{announcement.detail}</p><button className="button button--white" onClick={() => onNotify("Pengumuman ditandai sudah dibaca.")}>Lihat detail <ChevronRight size={14} /></button></div><div className="announcement-controls"><button className="icon-button" onClick={() => nextAnnouncement(-1)} aria-label="Pengumuman sebelumnya">‹</button><span>{announcementIndex + 1} / {homeAnnouncements.length}</span><button className="icon-button" onClick={() => nextAnnouncement(1)} aria-label="Pengumuman berikutnya">›</button></div></section>
       <section className="home-section"><div className="home-section-head"><div><span className="eyebrow">Akses cepat</span><h2>Menu {roleLabel[role]}</h2></div><span className="home-section-note">Pilih aktivitas untuk mulai</span></div><div className="home-icon-grid">{items.map((item) => { const Icon = item.icon; return <button className={`home-icon-tile home-icon-tile--${item.tone} ${item.primary ? "home-icon-tile--primary" : ""}`} key={item.label} onClick={() => item.page ? onNavigate(item.page) : onNotify(`${item.label} segera tersedia.`)}><span className="home-icon-badge"><Icon size={20} /></span><strong>{item.label}</strong><small>{item.helper}</small>{item.badge && <em>{item.badge}</em>}</button>; })}</div></section>
-      {canScan && <section className="scan-card"><div className="scan-card-icon"><ScanLine size={25} /></div><div className="scan-card-copy"><span className="home-kicker">Absensi kelas aktif</span><strong>Primary B — P2</strong><p>Hari ini · 10:00 · Ruang 03 · QR aktif sampai 11:45</p><div className="scan-progress"><span><i style={{ width: "71%" }} /></span><small>5 dari 7 murid sudah hadir</small></div></div><button className="button button--dark" onClick={() => onNavigate("attendance")}>Buka kamera & Scan QR <ChevronRight size={15} /></button></section>}
+      {canScan && <section className="scan-card"><div className="scan-card-icon"><ScanLine size={25} /></div><div className="scan-card-copy"><span className="home-kicker">Absensi kelas aktif</span><strong>Primary B — P2</strong><p>Hari ini · 10:00 · Ruang 03 · QR aktif sampai 11:45</p><div className="scan-progress"><span><i style={{ width: "71%" }} /></span><small>5 dari 7 murid sudah hadir</small></div></div><button className="button button--dark" onClick={() => onNavigate("scan")}>Buka kamera & Scan QR <ChevronRight size={15} /></button></section>}
       <section className="home-section"><div className="home-section-head"><div><span className="eyebrow">To-do & agenda</span><h2>Yang perlu dilakukan</h2></div><button className="button button--outline" onClick={() => onNavigate("tasks")}>Lihat semua <ChevronRight size={15} /></button></div><div className="home-todo-list">{todo.map((item) => { const Icon = item.icon; return <button className="home-todo-row" key={item.title} onClick={() => onNavigate(item.page)}><span className={`home-todo-icon home-todo-icon--${item.tone}`}><Icon size={17} /></span><span className="home-todo-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><b>{item.time}</b><ChevronRight size={16} /></button>; })}</div></section>
       <footer className="home-base-footer"><Sparkles size={15} /> Fun learning, clear operations · <strong>KIDDLES BSD</strong></footer>
     </div>
@@ -554,7 +653,7 @@ export default function Home() {
     {mobileOpen && <button className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup navigasi" />}
     <main className="main-shell">
       <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div className="breadcrumb"><span>KIDDLES BSD</span><ChevronRight size={14} /><strong>{pageTitle}</strong></div></div><div className="topbar-actions"><label className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari murid, invoice, lead..." /><kbd>⌘ K</kbd></label><button className="icon-button notification-button" onClick={() => notify("Tidak ada notifikasi baru.")} aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="role-select"><select value={role} onChange={(event) => { setRole(event.target.value); notify(`Mode ${event.target.value} aktif.`); }}><option>Owner</option><option>Admin</option><option>Guru</option><option>Murid/Orang Tua</option></select><ChevronDown size={14} /></div><Avatar initials="SA" tone="pink" /></div></header>
-      <div className="page-content"><div className="content-heading-mobile"><span className="eyebrow">Workspace KIDDLES BSD</span><h1>{pageTitle}</h1></div>{!demoVisible && <div className="demo-hidden-banner"><Sparkles size={16} /><span>Data contoh sedang disembunyikan. Anda dapat mengaktifkannya kembali di Pengaturan.</span><button onClick={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }}>Tampilkan kembali</button></div>}{!demoVisible && activePage !== "settings" ? <DemoEmptyState onRestore={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }} /> : <>{activePage === "dashboard" && <HomeIconBase role={role} onNavigate={navigate} onNotify={notify} onRoleChange={(nextRole) => { setRole(nextRole); notify(`Mode ${nextRole} aktif.`); }} />}{activePage === "tasks" && <TasksPage role={role} onNavigate={navigate} onNotify={notify} />} {activePage === "crm" && <CrmPage onAction={openAction} query={query} />}{activePage === "schedule" && <SchedulePage onAction={openAction} />}{activePage === "attendance" && <AttendancePage onNotify={notify} />}{activePage === "students" && <StudentsPage onAction={openAction} query={query} />}{activePage === "billing" && <BillingPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "finance" && <FinancePage onAction={openAction} onNotify={notify} />}{activePage === "portal" && <PortalPage onNotify={notify} />}{activePage === "settings" && <SettingsPage onNotify={notify} onClearDemo={clearDemo} />}</>}</div>
+      <div className="page-content"><div className="content-heading-mobile"><span className="eyebrow">Workspace KIDDLES BSD</span><h1>{pageTitle}</h1></div>{!demoVisible && <div className="demo-hidden-banner"><Sparkles size={16} /><span>Data contoh sedang disembunyikan. Anda dapat mengaktifkannya kembali di Pengaturan.</span><button onClick={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }}>Tampilkan kembali</button></div>}{!demoVisible && activePage !== "settings" ? <DemoEmptyState onRestore={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }} /> : <>{activePage === "dashboard" && <HomeIconBase role={role} onNavigate={navigate} onNotify={notify} onRoleChange={(nextRole) => { setRole(nextRole); notify(`Mode ${nextRole} aktif.`); }} />}{activePage === "tasks" && <TasksPage role={role} onNavigate={navigate} onNotify={notify} />} {activePage === "crm" && <CrmPage onAction={openAction} query={query} />}{activePage === "schedule" && <SchedulePage onAction={openAction} />}{activePage === "attendance" && <AttendancePage onNotify={notify} />}{activePage === "scan" && <ScanQrPage onNotify={notify} />}{activePage === "students" && <StudentsPage onAction={openAction} query={query} />}{activePage === "billing" && <BillingPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "finance" && <FinancePage onAction={openAction} onNotify={notify} />}{activePage === "portal" && <PortalPage onNotify={notify} />}{activePage === "settings" && <SettingsPage onNotify={notify} onClearDemo={clearDemo} />}</>}</div>
     </main>
     {toast && <div className="toast"><span className="toast-check"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Tutup pesan"><X size={15} /></button></div>}
     {modal && <Modal kind={modal} onClose={() => setModal(null)} onSave={handleSave} />}

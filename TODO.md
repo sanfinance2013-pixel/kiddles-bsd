@@ -45,6 +45,11 @@
 - [x] API payroll menyediakan daftar payout guru sebagai dasar increment payroll PDF berikutnya.
 - [ ] Hubungkan form frontend ke presigned upload storage dan API domain; tahap ini baru menyediakan kontrak server yang aman dan belum menambahkan upload file langsung di UI.
 
+## Implementasi bertahap Scan QR
+- [x] Tahap 1 menyediakan halaman `/scan-qr`, tombol launcher Scan QR pada Home role Guru/Admin, akses kamera browser HTTPS, frame scanner, deteksi QR native bila `BarcodeDetector` tersedia, dan fallback input kode manual.
+- [ ] Tahap 2 menghubungkan hasil QR ke validasi server berdasarkan sesi aktif, guru yang ditugaskan, murid, role staff, dan token QR opaque.
+- [ ] Tahap 3 menyimpan absensi idempotent, mengurangi sisa sesi hanya untuk status Hadir, dan menampilkan hasil sukses/gagal secara real-time.
+
 ## Pendaftaran murid, pembayaran, jadwal, dan QR absensi
 - [ ] Admin dapat mendaftarkan murid dan orang tua/wali; server membuat nomor induk murid unik, paket aktif, kelas, dan invoice.
 - [ ] Paket menyimpan nominal dan jumlah pertemuan; contoh pembayaran Rp1.000.000 untuk 8 pertemuan memberi saldo awal 8 setelah pembayaran diverifikasi Lunas.
