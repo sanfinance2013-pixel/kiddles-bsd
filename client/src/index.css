@@ -704,3 +704,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .home-todo-row { padding-inline: 11px; }
   .home-todo-row b { display: none; }
 }
+.home-role-demo { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid #e6e8eb; border-radius: 8px; background: #fff; }
+.home-role-demo small { color: #9aa3ae; font-size: 8px; font-weight: 800; }
+.home-role-demo select { max-width: 84px; border: 0; outline: 0; background: transparent; color: #65707d; font-size: 9px; font-weight: 800; }
+@media (max-width: 720px) { .home-role-demo small { display: none; } .home-role-demo select { max-width: 70px; font-size: 8px; } }
