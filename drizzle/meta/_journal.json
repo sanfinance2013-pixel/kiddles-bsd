@@ -8,6 +8,20 @@
       "when": 1788785580464,
       "tag": "0000_initial_users",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1792556970603,
+      "tag": "0001_parched_shaman",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1792557044069,
+      "tag": "0002_opposite_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

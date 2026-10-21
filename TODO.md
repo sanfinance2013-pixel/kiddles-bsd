@@ -37,6 +37,14 @@
 - [x] Home Icon Base frontend tersedia sebagai halaman full-screen: header nama/jabatan, banner pengumuman, launcher ikon berbasis role, kartu Scan QR untuk Guru/Admin, dan to-do/agenda berbasis role; halaman modul lama tetap dapat dibuka melalui navigasi ikon.
 - [ ] Hubungkan data layar ke tabel relasional Drizzle dan autentikasi role-based secara penuh pada iterasi backend berikutnya. Layar MVP saat ini sengaja menggunakan data contoh frontend untuk validasi alur dan desain.
 
+## Fondasi API operasional server
+- [x] Schema additive tersedia untuk students, packages, invoices, paymentEvidence, sessions, sessionQrTokens, attendance, teacherPayouts, dan activityLogs dengan soft delete serta unique key attendance per sesi/murid.
+- [x] API terproteksi menyediakan daftar dan pembuatan murid, pembuatan invoice dengan perhitungan server-side subtotal-diskon-biaya admin-pajak-total, daftar invoice, daftar bukti bayar, dan review bukti bayar.
+- [x] API bukti bayar menyimpan object key/stable storage URL, MIME yang dibatasi JPG/PNG/PDF, nominal, status review, actor, dan audit log; persetujuan bukti memperbarui paidAmount/status invoice.
+- [x] API jadwal menyediakan sesi mendatang dan aktivasi/penutupan status QR oleh staff; API absensi menolak sesi nonaktif dan membuat absensi idempotent sehingga scan ulang tidak mengurangi saldo dua kali.
+- [x] API payroll menyediakan daftar payout guru sebagai dasar increment payroll PDF berikutnya.
+- [ ] Hubungkan form frontend ke presigned upload storage dan API domain; tahap ini baru menyediakan kontrak server yang aman dan belum menambahkan upload file langsung di UI.
+
 ## Pendaftaran murid, pembayaran, jadwal, dan QR absensi
 - [ ] Admin dapat mendaftarkan murid dan orang tua/wali; server membuat nomor induk murid unik, paket aktif, kelas, dan invoice.
 - [ ] Paket menyimpan nominal dan jumlah pertemuan; contoh pembayaran Rp1.000.000 untuk 8 pertemuan memberi saldo awal 8 setelah pembayaran diverifikasi Lunas.

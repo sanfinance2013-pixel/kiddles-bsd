@@ -43,3 +43,22 @@ export const adminProcedure = t.procedure.use(
     });
   }),
 );
+
+const requireStaff = t.middleware(async opts => {
+  const { ctx, next } = opts;
+  if (!ctx.user || !["admin", "owner", "teacher"].includes(ctx.user.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+  }
+  return next({ ctx: { ...ctx, user: ctx.user } });
+});
+
+const requireManager = t.middleware(async opts => {
+  const { ctx, next } = opts;
+  if (!ctx.user || !["admin", "owner"].includes(ctx.user.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+  }
+  return next({ ctx: { ...ctx, user: ctx.user } });
+});
+
+export const staffProcedure = t.procedure.use(requireStaff);
+export const managerProcedure = t.procedure.use(requireManager);
