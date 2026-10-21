@@ -7,6 +7,8 @@ import {
   ArrowUpRight,
   BadgeDollarSign,
   Bell,
+  BookOpen,
+  CalendarCheck,
   BookOpenCheck,
   CalendarClock,
   CalendarDays,
@@ -20,20 +22,24 @@ import {
   Download,
   ExternalLink,
   FileSpreadsheet,
+  FileBarChart,
   FileText,
   GraduationCap,
   LayoutDashboard,
   Menu,
+  Megaphone,
   MessageCircle,
   MoreHorizontal,
   Plus,
   Receipt,
   Search,
+  ScanLine,
   Settings2,
   SlidersHorizontal,
   Sparkles,
   UserPlus,
   UserRound,
+  ReceiptText,
   Users,
   WalletCards,
   X,
@@ -355,6 +361,82 @@ function TasksPage({ role, onNavigate, onNotify }: { role: string; onNavigate: (
   </div>;
 }
 
+type HomeIconItem = { label: string; helper: string; icon: LucideIcon; tone: Tone; page?: PageKey; badge?: string; primary?: boolean };
+
+const roleLabel: Record<string, string> = { Owner: "Owner Cabang", Admin: "Admin Operasional", Guru: "Guru / Teacher", "Murid/Orang Tua": "Orang Tua / Parent" };
+
+const homeItemsByRole: Record<string, HomeIconItem[]> = {
+  Owner: [
+    { label: "Dashboard", helper: "Ringkasan", icon: LayoutDashboard, tone: "pink", page: "dashboard" },
+    { label: "Keuangan", helper: "Omzet & laba", icon: CircleDollarSign, tone: "orange", page: "finance" },
+    { label: "Laporan", helper: "Insight cabang", icon: FileBarChart, tone: "blue", page: "finance" },
+    { label: "Murid aktif", helper: "86 murid", icon: GraduationCap, tone: "lime", page: "students" },
+    { label: "Jadwal", helper: "6 kelas", icon: CalendarDays, tone: "blue", page: "schedule" },
+    { label: "Payroll", helper: "4 guru", icon: WalletCards, tone: "orange", page: "finance" },
+    { label: "Pengumuman", helper: "2 draft", icon: Megaphone, tone: "pink", page: "settings" },
+    { label: "Pengaturan", helper: "Cabang", icon: Settings2, tone: "ink", page: "settings" },
+  ],
+  Admin: [
+    { label: "Pendaftaran", helper: "12 lead", icon: UserPlus, tone: "pink", page: "crm" },
+    { label: "Murid", helper: "86 aktif", icon: GraduationCap, tone: "lime", page: "students" },
+    { label: "Invoice", helper: "8 perlu aksi", icon: ReceiptText, tone: "orange", page: "billing", badge: "8" },
+    { label: "Pembayaran", helper: "3 bukti", icon: WalletCards, tone: "blue", page: "billing", badge: "3" },
+    { label: "Jadwal", helper: "6 kelas", icon: CalendarDays, tone: "blue", page: "schedule" },
+    { label: "Absensi", helper: "3 belum", icon: ClipboardCheck, tone: "lime", page: "attendance", badge: "3" },
+    { label: "Scan QR", helper: "Kelas aktif", icon: ScanLine, tone: "pink", page: "attendance", primary: true },
+    { label: "Tugas", helper: "7 terbuka", icon: ClipboardList, tone: "orange", page: "tasks", badge: "7" },
+    { label: "Pengumuman", helper: "Cabang", icon: Megaphone, tone: "blue", page: "settings" },
+    { label: "Laporan", helper: "Keuangan", icon: FileBarChart, tone: "ink", page: "finance" },
+  ],
+  Guru: [
+    { label: "Jadwal Saya", helper: "3 kelas", icon: CalendarDays, tone: "blue", page: "schedule" },
+    { label: "Kelas berikutnya", helper: "10:00", icon: CalendarCheck, tone: "orange", page: "schedule" },
+    { label: "Scan QR", helper: "Kelas aktif", icon: ScanLine, tone: "pink", page: "attendance", primary: true },
+    { label: "Absensi", helper: "7 murid", icon: ClipboardCheck, tone: "lime", page: "attendance" },
+    { label: "Catatan materi", helper: "1 belum", icon: BookOpen, tone: "blue", page: "attendance" },
+    { label: "Evaluasi", helper: "Minggu ini", icon: FileText, tone: "orange", page: "students" },
+  ],
+  "Murid/Orang Tua": [
+    { label: "Jadwal anak", helper: "Besok 08:30", icon: CalendarDays, tone: "blue", page: "schedule" },
+    { label: "Sisa course", helper: "6 sesi", icon: BookOpenCheck, tone: "lime", page: "portal" },
+    { label: "Absensi", helper: "96% hadir", icon: ClipboardCheck, tone: "pink", page: "portal" },
+    { label: "Invoice", helper: "Rp1.000.000", icon: ReceiptText, tone: "orange", page: "billing" },
+    { label: "Rapor", helper: "Terbaru", icon: FileText, tone: "blue", page: "portal" },
+    { label: "Pengumuman", helper: "2 baru", icon: Megaphone, tone: "pink", page: "portal", badge: "2" },
+  ],
+};
+
+const homeAnnouncements = [
+  { label: "Penting", title: "Perubahan jadwal kelas Primary B", detail: "Jumat, 24 Oktober pindah ke Ruang 02.", date: "Hari ini", tone: "pink" as Tone },
+  { label: "Informasi", title: "KIDDLES BSD libur pada 28 Oktober", detail: "Kelas pengganti akan diinformasikan Admin.", date: "Kemarin", tone: "blue" as Tone },
+  { label: "Promo", title: "Program Conversation Club dibuka", detail: "Ajak keluarga mencoba kelas trial minggu ini.", date: "14 Okt", tone: "lime" as Tone },
+];
+
+function HomeIconBase({ role, onNavigate, onNotify }: { role: string; onNavigate: (page: PageKey) => void; onNotify: (message: string) => void }) {
+  const [announcementIndex, setAnnouncementIndex] = useState(0);
+  const items = homeItemsByRole[role] ?? homeItemsByRole.Owner;
+  const announcement = homeAnnouncements[announcementIndex];
+  const nextAnnouncement = (direction: number) => setAnnouncementIndex((current) => (current + direction + homeAnnouncements.length) % homeAnnouncements.length);
+  const canScan = role === "Guru" || role === "Admin";
+  const todo = role === "Guru"
+    ? [{ title: "Primary B — P2", detail: "7 murid · Ruang 03 · Scan QR", time: "10:00", icon: CalendarCheck, tone: "blue" as Tone, page: "attendance" as PageKey }, { title: "Catat materi Kinder A", detail: "Pertemuan selesai · belum diisi", time: "12:00", icon: BookOpen, tone: "pink" as Tone, page: "attendance" as PageKey }, { title: "Evaluasi William Hartono", detail: "Mencapai 8 pertemuan", time: "Jumat", icon: FileText, tone: "orange" as Tone, page: "students" as PageKey }]
+    : role === "Murid/Orang Tua"
+      ? [{ title: "Nadine · Kinder A", detail: "Besok · Ruang 02 · 60 menit", time: "08:30", icon: CalendarCheck, tone: "blue" as Tone, page: "schedule" as PageKey }, { title: "Sisa course", detail: "Paket Kinder Term 4", time: "6 sesi", icon: BookOpenCheck, tone: "lime" as Tone, page: "portal" as PageKey }, { title: "Invoice berikutnya", detail: "Jatuh tempo 20 Okt 2026", time: "Rp1 jt", icon: ReceiptText, tone: "orange" as Tone, page: "billing" as PageKey }]
+      : role === "Admin"
+        ? [{ title: "Follow-up Kezia Anindya", detail: "Lead baru · SLA terlewati 2 jam", time: "Prioritas", icon: UserPlus, tone: "pink" as Tone, page: "crm" as PageKey }, { title: "3 bukti pembayaran", detail: "Menunggu verifikasi admin", time: "Hari ini", icon: WalletCards, tone: "blue" as Tone, page: "billing" as PageKey }, { title: "Primary B — P2", detail: "Absensi guru belum lengkap", time: "10:00", icon: ClipboardCheck, tone: "orange" as Tone, page: "attendance" as PageKey }, { title: "Gabriel · sisa 2 sesi", detail: "Tawarkan perpanjangan paket", time: "Aksi", icon: GraduationCap, tone: "lime" as Tone, page: "students" as PageKey }]
+        : [{ title: "Ringkasan operasional", detail: "86 murid aktif · omzet Rp28,6 jt", time: "Hari ini", icon: LayoutDashboard, tone: "pink" as Tone, page: "finance" as PageKey }, { title: "Payroll guru", detail: "4 slip menunggu ditinjau", time: "Prioritas", icon: WalletCards, tone: "orange" as Tone, page: "finance" as PageKey }, { title: "Invoice & bukti bayar", detail: "8 invoice perlu perhatian", time: "Hari ini", icon: ReceiptText, tone: "blue" as Tone, page: "billing" as PageKey }, { title: "Bentrok jadwal Bu Agnes", detail: "Ruang 01 & 02 · Jumat 16:00", time: "Periksa", icon: AlertTriangle, tone: "lime" as Tone, page: "schedule" as PageKey }];
+  return <div className="home-icon-base">
+    <header className="home-base-header"><div className="home-brand"><img src={logoUrl} alt="KIDDLES — Kids Learning Chinese" /><span>KIDDLES BSD</span></div><div className="home-user"><div><strong>Selamat pagi, Kak Sarah</strong><span>{roleLabel[role]} · West Village Business Park</span></div><button className="icon-button notification-button" onClick={() => onNotify("Tidak ada notifikasi baru.")} aria-label="Notifikasi"><Bell size={19} /><i /></button><Avatar initials="SA" tone="pink" size="md" /></div></header>
+    <div className="home-base-inner">
+      <section className={`announcement-card announcement-card--${announcement.tone}`}><div className="announcement-copy"><span className="home-kicker"><Megaphone size={13} /> Pengumuman · {announcement.date}</span><strong>{announcement.title}</strong><p>{announcement.detail}</p><button className="button button--white" onClick={() => onNotify("Pengumuman ditandai sudah dibaca.")}>Lihat detail <ChevronRight size={14} /></button></div><div className="announcement-controls"><button className="icon-button" onClick={() => nextAnnouncement(-1)} aria-label="Pengumuman sebelumnya">‹</button><span>{announcementIndex + 1} / {homeAnnouncements.length}</span><button className="icon-button" onClick={() => nextAnnouncement(1)} aria-label="Pengumuman berikutnya">›</button></div></section>
+      <section className="home-section"><div className="home-section-head"><div><span className="eyebrow">Akses cepat</span><h2>Menu {roleLabel[role]}</h2></div><span className="home-section-note">Pilih aktivitas untuk mulai</span></div><div className="home-icon-grid">{items.map((item) => { const Icon = item.icon; return <button className={`home-icon-tile home-icon-tile--${item.tone} ${item.primary ? "home-icon-tile--primary" : ""}`} key={item.label} onClick={() => item.page ? onNavigate(item.page) : onNotify(`${item.label} segera tersedia.`)}><span className="home-icon-badge"><Icon size={20} /></span><strong>{item.label}</strong><small>{item.helper}</small>{item.badge && <em>{item.badge}</em>}</button>; })}</div></section>
+      {canScan && <section className="scan-card"><div className="scan-card-icon"><ScanLine size={25} /></div><div className="scan-card-copy"><span className="home-kicker">Absensi kelas aktif</span><strong>Primary B — P2</strong><p>Hari ini · 10:00 · Ruang 03 · QR aktif sampai 11:45</p><div className="scan-progress"><span><i style={{ width: "71%" }} /></span><small>5 dari 7 murid sudah hadir</small></div></div><button className="button button--dark" onClick={() => onNavigate("attendance")}>Buka kamera & Scan QR <ChevronRight size={15} /></button></section>}
+      <section className="home-section"><div className="home-section-head"><div><span className="eyebrow">To-do & agenda</span><h2>Yang perlu dilakukan</h2></div><button className="button button--outline" onClick={() => onNavigate("tasks")}>Lihat semua <ChevronRight size={15} /></button></div><div className="home-todo-list">{todo.map((item) => { const Icon = item.icon; return <button className="home-todo-row" key={item.title} onClick={() => onNavigate(item.page)}><span className={`home-todo-icon home-todo-icon--${item.tone}`}><Icon size={17} /></span><span className="home-todo-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><b>{item.time}</b><ChevronRight size={16} /></button>; })}</div></section>
+      <footer className="home-base-footer"><Sparkles size={15} /> Fun learning, clear operations · <strong>KIDDLES BSD</strong></footer>
+    </div>
+  </div>;
+}
+
 function CrmPage({ onAction, query }: { onAction: (modal: Exclude<ModalKey, null>) => void; query: string }) {
   const filtered = leads.filter((lead) => `${lead.name} ${lead.guardian} ${lead.program}`.toLowerCase().includes(query.toLowerCase()));
   const columns = [
@@ -461,7 +543,7 @@ export default function Home() {
     notify("Data contoh sudah disembunyikan dari workspace ini.");
   };
 
-  return <div className="app-shell">
+  return <div className={`app-shell ${activePage === "dashboard" ? "app-shell--home" : ""}`}>
     <aside className={`sidebar ${mobileOpen ? "sidebar--open" : ""}`}>
       <div className="sidebar-head"><BrandLogo /><button className="mobile-close icon-button" onClick={() => setMobileOpen(false)} aria-label="Tutup menu"><X size={19} /></button></div>
       <div className="branch-switcher"><span className="branch-status" /><span><small>Cabang aktif</small><strong>KIDDLES BSD</strong></span><ChevronDown size={15} /></div>
@@ -471,7 +553,7 @@ export default function Home() {
     {mobileOpen && <button className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Tutup navigasi" />}
     <main className="main-shell">
       <header className="topbar"><div className="topbar-left"><button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div className="breadcrumb"><span>KIDDLES BSD</span><ChevronRight size={14} /><strong>{pageTitle}</strong></div></div><div className="topbar-actions"><label className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari murid, invoice, lead..." /><kbd>⌘ K</kbd></label><button className="icon-button notification-button" onClick={() => notify("Tidak ada notifikasi baru.")} aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="role-select"><select value={role} onChange={(event) => { setRole(event.target.value); notify(`Mode ${event.target.value} aktif.`); }}><option>Owner</option><option>Admin</option><option>Guru</option><option>Murid/Orang Tua</option></select><ChevronDown size={14} /></div><Avatar initials="SA" tone="pink" /></div></header>
-      <div className="page-content"><div className="content-heading-mobile"><span className="eyebrow">Workspace KIDDLES BSD</span><h1>{pageTitle}</h1></div>{!demoVisible && <div className="demo-hidden-banner"><Sparkles size={16} /><span>Data contoh sedang disembunyikan. Anda dapat mengaktifkannya kembali di Pengaturan.</span><button onClick={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }}>Tampilkan kembali</button></div>}{!demoVisible && activePage !== "settings" ? <DemoEmptyState onRestore={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }} /> : <>{activePage === "dashboard" && <Dashboard onAction={openAction} onNavigate={navigate} />}{activePage === "tasks" && <TasksPage role={role} onNavigate={navigate} onNotify={notify} />} {activePage === "crm" && <CrmPage onAction={openAction} query={query} />}{activePage === "schedule" && <SchedulePage onAction={openAction} />}{activePage === "attendance" && <AttendancePage onNotify={notify} />}{activePage === "students" && <StudentsPage onAction={openAction} query={query} />}{activePage === "billing" && <BillingPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "finance" && <FinancePage onAction={openAction} onNotify={notify} />}{activePage === "portal" && <PortalPage onNotify={notify} />}{activePage === "settings" && <SettingsPage onNotify={notify} onClearDemo={clearDemo} />}</>}</div>
+      <div className="page-content"><div className="content-heading-mobile"><span className="eyebrow">Workspace KIDDLES BSD</span><h1>{pageTitle}</h1></div>{!demoVisible && <div className="demo-hidden-banner"><Sparkles size={16} /><span>Data contoh sedang disembunyikan. Anda dapat mengaktifkannya kembali di Pengaturan.</span><button onClick={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }}>Tampilkan kembali</button></div>}{!demoVisible && activePage !== "settings" ? <DemoEmptyState onRestore={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }} /> : <>{activePage === "dashboard" && <HomeIconBase role={role} onNavigate={navigate} onNotify={notify} />}{activePage === "tasks" && <TasksPage role={role} onNavigate={navigate} onNotify={notify} />} {activePage === "crm" && <CrmPage onAction={openAction} query={query} />}{activePage === "schedule" && <SchedulePage onAction={openAction} />}{activePage === "attendance" && <AttendancePage onNotify={notify} />}{activePage === "students" && <StudentsPage onAction={openAction} query={query} />}{activePage === "billing" && <BillingPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "finance" && <FinancePage onAction={openAction} onNotify={notify} />}{activePage === "portal" && <PortalPage onNotify={notify} />}{activePage === "settings" && <SettingsPage onNotify={notify} onClearDemo={clearDemo} />}</>}</div>
     </main>
     {toast && <div className="toast"><span className="toast-check"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Tutup pesan"><X size={15} /></button></div>}
     {modal && <Modal kind={modal} onClose={() => setModal(null)} onSave={handleSave} />}

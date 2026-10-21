@@ -280,3 +280,27 @@ Tambahkan `announcements`, `announcement_reads`, `session_qr_tokens`, dan perlua
 
 ### Acceptance utama
 Home menampilkan pengumuman, icon launcher yang berbeda sesuai role, dan schedule event kelas terdekat. Guru hanya dapat membuka QR untuk kelas yang memang ditugaskan. QR sesi tidak aktif sebelum jendela waktu, aktif pada jadwal, dan tertutup setelah sesi berakhir. Guru dapat scan QR murid, fallback nomor induk tersedia, satu murid tidak dapat tercatat dua kali pada sesi yang sama, dan sisa course berkurang tepat satu hanya untuk status Hadir yang valid.
+
+
+
+## 13. Dokumen pembayaran, invoice PDF, dan payroll guru
+
+### Bukti pembayaran
+Admin dapat menerima bukti transfer melalui kamera perangkat atau upload file dari galeri. Pada browser HTTPS, tombol `Ambil foto bukti` memakai camera capture; tombol `Upload bukti` menerima JPG, PNG, dan PDF. Server memvalidasi role, ukuran maksimum, MIME/content yang benar, memberi object key acak, menyimpan file di durable storage, dan menyimpan metadata ownership di database. File tidak masuk Git dan tidak boleh diakses hanya dengan mengetahui URL; endpoint download harus memeriksa role dan relasi invoice.
+
+Setiap bukti memiliki status `Menunggu verifikasi`, `Disetujui`, `Ditolak`, atau `Perlu diperiksa`, catatan admin, waktu, dan actor. OCR/scan dapat membantu membaca nominal, tanggal, nama rekening, dan referensi, tetapi hasil OCR hanya saran dan tidak boleh otomatis melunasi invoice. Admin tetap memilih nominal pembayaran yang diverifikasi. Bukti yang ditolak menyimpan alasan dan dapat diganti tanpa menghapus riwayat lama.
+
+### Invoice PDF profesional
+Invoice dibuat dari data server dengan nomor urut, identitas KIDDLES BSD dan alamat West Village Business Park 2, D-8, Jalan BSD Raya Pusat, Kabupaten Tangerang, Banten, identitas murid/nomor induk, rincian program/paket, jumlah sesi, harga satuan, subtotal, diskon/voucher, biaya admin/payment gateway, dasar pengenaan pajak bila diaktifkan, pajak, pembulatan, total tagihan, riwayat pembayaran, saldo, jatuh tempo, metode pembayaran, status, QR/nomor verifikasi dokumen, serta catatan pembayaran.
+
+Perhitungan menggunakan integer Rupiah dan konfigurasi server, bukan angka yang dikirim browser. Pengaturan Owner menyediakan mode pajak `Tidak dihitung`, `PPN persentase`, atau `Pajak/withholding lain`, tarif, apakah harga sudah termasuk pajak, biaya admin nominal/persentase, pembulatan, dan masa berlaku konfigurasi. Nilai awal tetap 0 sampai Owner menetapkan skema resmi. Aplikasi menampilkan disclaimer bahwa konfigurasi pajak harus dikonfirmasi dengan akuntan/konsultan pajak dan tidak mengklaim status faktur pajak resmi.
+
+Tombol `Download PDF` menghasilkan dokumen print-friendly/PDF yang konsisten, sedangkan tombol `Cetak` membuka layout cetak. Setiap versi invoice menyimpan snapshot perhitungan agar invoice lama tidak berubah ketika tarif pajak atau biaya admin diperbarui. Invoice lunas tidak boleh diedit biasa; koreksi dibuat sebagai credit/void workflow dengan audit log.
+
+### Dokumen payroll dan bukti bayar guru
+Owner/Admin dapat membuat periode payroll, menghitung honor berdasarkan sesi yang valid diajar, tarif guru per sesi/jam, pengganti, bonus, potongan, biaya lain, pajak/withholding jika dikonfigurasi, dan total bersih. Sesi hanya masuk payroll setelah kelas selesai dan absensi/catatan materi memenuhi aturan. Payroll memiliki status `Draft`, `Ditinjau`, `Disetujui`, `Dibayar`, dan `Dibatalkan` dengan alasan.
+
+Sistem membuat slip honor PDF profesional per guru berisi periode, identitas guru, daftar sesi/tanggal/kelas, durasi, tarif, komponen tambahan/potongan, bruto, pajak/withholding, neto, status, nomor dokumen, dan tanggal. Setelah pembayaran dilakukan, Admin dapat mengupload bukti bayar payroll melalui kamera/upload; dokumen diberi status verifikasi dan dapat diunduh oleh Owner/Admin serta guru yang bersangkutan sesuai permission. Perubahan payroll setelah disetujui memerlukan pembukaan periode atau adjustment terpisah dan selalu tercatat di activity log.
+
+### Acceptance utama
+Admin dapat mengambil foto atau mengupload bukti pembayaran, mengaitkannya dengan invoice, memverifikasi/menolak dengan catatan, dan melihat riwayat dokumen. Invoice dapat diunduh sebagai PDF lengkap dengan rincian pajak dan biaya admin dari konfigurasi server. Perubahan konfigurasi tidak mengubah invoice lama. Owner/Admin dapat menghasilkan payroll guru dan slip PDF; bukti transfer payroll dapat diupload dan diakses hanya oleh pihak berwenang.

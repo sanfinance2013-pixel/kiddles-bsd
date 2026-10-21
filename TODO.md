@@ -34,6 +34,7 @@
 - [x] Responsif mobile-first dengan logo KIDDLES pengguna, format tanggal Indonesia, Rupiah, dan zona waktu Asia/Jakarta.
 - [x] Tombol pengelolaan data contoh tersedia di Pengaturan.
 - [x] Halaman Tugas Hari Ini tersedia di `/tasks`, menampilkan tugas berbeda berdasarkan role Owner, Admin, Guru, dan Murid/Orang Tua; setiap kartu punya tautan tindakan dan status selesai untuk sesi demo.
+- [x] Home Icon Base frontend tersedia sebagai halaman full-screen: header nama/jabatan, banner pengumuman, launcher ikon berbasis role, kartu Scan QR untuk Guru/Admin, dan to-do/agenda berbasis role; halaman modul lama tetap dapat dibuka melalui navigasi ikon.
 - [ ] Hubungkan data layar ke tabel relasional Drizzle dan autentikasi role-based secara penuh pada iterasi backend berikutnya. Layar MVP saat ini sengaja menggunakan data contoh frontend untuk validasi alur dan desain.
 
 ## Pendaftaran murid, pembayaran, jadwal, dan QR absensi
@@ -45,3 +46,12 @@
 - [ ] Satu absensi Hadir mengurangi sisa pertemuan tepat satu kali; scan ulang untuk pertemuan yang sama tidak mengurangi saldo kedua kali. Izin, Sakit, dan Alpa tidak mengurangi saldo.
 - [ ] Saat sisa pertemuan menjadi 3, status murid berubah menjadi Sesi hampir habis dan tugas perpanjangan dibuat satu kali.
 - [ ] QR tidak memuat data pribadi; server memvalidasi token, murid, kelas, pertemuan aktif, role, dan mencatat activity log.
+
+## Dokumen pembayaran, invoice PDF, dan payroll guru
+- [ ] Admin dapat mengambil foto bukti pembayaran melalui kamera browser HTTPS atau mengupload JPG, PNG, dan PDF dari perangkat.
+- [ ] Bukti pembayaran tersimpan di durable storage dengan metadata invoice, status Menunggu verifikasi/Disetujui/Ditolak/Perlu diperiksa, catatan admin, dan activity log; OCR hanya menjadi saran dan tidak otomatis melunasi invoice.
+- [ ] Invoice dapat di-download sebagai PDF profesional berisi identitas KIDDLES BSD, nomor invoice, nomor induk murid, rincian paket/sesi, subtotal, diskon, biaya admin, pajak bila diaktifkan, total, pembayaran, saldo, jatuh tempo, status, dan informasi verifikasi.
+- [ ] Perhitungan pajak, biaya admin, pembulatan, dan harga termasuk pajak berasal dari konfigurasi server; default tarif pajak dan biaya admin adalah 0 sampai Owner menetapkan skema resmi.
+- [ ] Invoice lama mempertahankan snapshot perhitungannya dan tidak berubah ketika konfigurasi pajak/biaya admin diperbarui; koreksi invoice memakai workflow audit, bukan edit langsung.
+- [ ] Owner/Admin dapat membuat periode payroll guru dari sesi valid, tarif per sesi/jam, bonus, potongan, pajak/withholding bila dikonfigurasi, dan menghasilkan slip honor PDF.
+- [ ] Payroll memiliki status Draft, Ditinjau, Disetujui, Dibayar, dan Dibatalkan; bukti transfer payroll dapat diambil melalui kamera atau upload, diverifikasi, dan dibatasi kepada Owner/Admin serta guru terkait.
