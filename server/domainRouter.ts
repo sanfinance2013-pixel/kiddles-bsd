@@ -1,20 +1,25 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { createHash, randomBytes } from "node:crypto";
 import {
   activityLogs,
   attendance,
   invoices,
   paymentEvidence,
   sessions,
+  studentQrTokens,
   students,
   teacherPayouts,
 } from "../drizzle/schema";
 import { managerProcedure, protectedProcedure, router, staffProcedure } from "./_core/trpc";
 import { getDb } from "./db";
+import { storagePut } from "./storage";
 
 const unavailable = () => new TRPCError({ code: "PRECONDITION_FAILED", message: "Database belum tersedia pada environment ini." });
 const staffId = z.number().int().positive();
+const hashQrToken = (token: string) => createHash("sha256").update(token).digest("hex");
+const newQrToken = () => `KBSQR.${randomBytes(24).toString("base64url")}`;
 
 export const domainRouter = router({
   students: router({
@@ -36,6 +41,30 @@ export const domainRouter = router({
         const result = await db.insert(students).values({ ...input, studentNo, guardianPhone: input.guardianPhone || null });
         await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "student", entityId: Number(result[0].insertId), action: "created" });
         return { studentNo, id: Number(result[0].insertId) };
+      }),
+    issueQrToken: managerProcedure
+      .input(z.object({ studentId: staffId }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const [student] = await db.select().from(students).where(and(eq(students.id, input.studentId), isNull(students.deletedAt))).limit(1);
+        if (!student) throw new TRPCError({ code: "NOT_FOUND", message: "Murid tidak ditemukan." });
+        const rawToken = newQrToken();
+        const tokenHash = hashQrToken(rawToken);
+        const [existing] = await db.select().from(studentQrTokens).where(eq(studentQrTokens.studentId, input.studentId)).limit(1);
+        if (existing) await db.update(studentQrTokens).set({ tokenHash, status: "active" }).where(eq(studentQrTokens.id, existing.id));
+        else await db.insert(studentQrTokens).values({ studentId: input.studentId, tokenHash, status: "active" });
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "student_qr", entityId: input.studentId, action: "issued" });
+        return { studentId: input.studentId, token: rawToken };
+      }),
+    revokeQrToken: managerProcedure
+      .input(z.object({ studentId: staffId }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        await db.update(studentQrTokens).set({ status: "revoked" }).where(eq(studentQrTokens.studentId, input.studentId));
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "student_qr", entityId: input.studentId, action: "revoked" });
+        return { success: true };
       }),
   }),
 
@@ -74,6 +103,20 @@ export const domainRouter = router({
         const result = await db.insert(paymentEvidence).values({ ...input, stableUrl, status: "pending", note: input.note || null, createdBy: ctx.user.id });
         await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "payment_evidence", entityId: Number(result[0].insertId), action: "submitted", metadata: JSON.stringify({ invoiceId: input.invoiceId }) });
         return { id: Number(result[0].insertId), stableUrl };
+      }),
+    uploadEvidence: protectedProcedure
+      .input(z.object({ invoiceId: staffId, fileName: z.string().trim().min(3).max(160), mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]), dataBase64: z.string().min(100).max(14_000_000), amount: z.number().int().positive(), note: z.string().trim().max(500).optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const raw = input.dataBase64.replace(/^data:[^;]+;base64,/, "");
+        const bytes = Buffer.from(raw, "base64");
+        if (bytes.length > 10 * 1024 * 1024) throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "Ukuran bukti pembayaran maksimal 10 MB." });
+        const safeName = input.fileName.replace(/[^A-Za-z0-9._-]/g, "_");
+        const stored = await storagePut(`kiddles/payment-evidence/${Date.now()}-${safeName}`, bytes, input.mimeType);
+        const result = await db.insert(paymentEvidence).values({ invoiceId: input.invoiceId, objectKey: stored.key, stableUrl: stored.url, mimeType: input.mimeType, amount: input.amount, status: "pending", note: input.note || null, createdBy: ctx.user.id });
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "payment_evidence", entityId: Number(result[0].insertId), action: "uploaded", metadata: JSON.stringify({ invoiceId: input.invoiceId, mimeType: input.mimeType, bytes: bytes.length }) });
+        return { id: Number(result[0].insertId), stableUrl: stored.url };
       }),
     reviewEvidence: managerProcedure
       .input(z.object({ evidenceId: staffId, status: z.enum(["approved", "rejected", "review"]), note: z.string().trim().max(500).optional() }))
@@ -118,6 +161,26 @@ export const domainRouter = router({
   }),
 
   attendance: router({
+    recordByQrToken: staffProcedure
+      .input(z.object({ sessionId: staffId, token: z.string().trim().min(12).max(200), status: z.enum(["present", "excused", "sick", "absent"]).default("present") }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const [session] = await db.select().from(sessions).where(eq(sessions.id, input.sessionId)).limit(1);
+        if (!session || session.deletedAt || session.qrStatus !== "active") throw new TRPCError({ code: "FORBIDDEN", message: "QR sesi belum aktif atau sudah ditutup." });
+        if (ctx.user.role === "teacher" && session.teacherUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Guru tidak ditugaskan pada sesi ini." });
+        const [qr] = await db.select().from(studentQrTokens).where(and(eq(studentQrTokens.tokenHash, hashQrToken(input.token)), eq(studentQrTokens.status, "active"))).limit(1);
+        if (!qr) throw new TRPCError({ code: "NOT_FOUND", message: "QR murid tidak valid atau sudah dicabut." });
+        const [existing] = await db.select().from(attendance).where(and(eq(attendance.sessionId, input.sessionId), eq(attendance.studentId, qr.studentId), isNull(attendance.deletedAt))).limit(1);
+        if (existing) return { success: true, duplicate: true, attendanceId: existing.id, studentId: qr.studentId };
+        const result = await db.insert(attendance).values({ sessionId: input.sessionId, studentId: qr.studentId, status: input.status, source: "qr", recordedBy: ctx.user.id });
+        if (input.status === "present") {
+          const [student] = await db.select().from(students).where(eq(students.id, qr.studentId)).limit(1);
+          if (student && student.remainingSessions > 0) await db.update(students).set({ remainingSessions: student.remainingSessions - 1 }).where(eq(students.id, qr.studentId));
+        }
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "attendance", entityId: Number(result[0].insertId), action: "recorded:qr", metadata: JSON.stringify({ sessionId: input.sessionId, studentId: qr.studentId, status: input.status }) });
+        return { success: true, duplicate: false, attendanceId: Number(result[0].insertId), studentId: qr.studentId };
+      }),
     record: staffProcedure
       .input(z.object({ sessionId: staffId, studentId: staffId, status: z.enum(["present", "excused", "sick", "absent"]), source: z.enum(["qr", "manual"]).default("qr") }))
       .mutation(async ({ input, ctx }) => {

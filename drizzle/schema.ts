@@ -91,6 +91,18 @@ export const paymentEvidence = mysqlTable("paymentEvidence", {
 export type PaymentEvidence = typeof paymentEvidence.$inferSelect;
 export type InsertPaymentEvidence = typeof paymentEvidence.$inferInsert;
 
+export const studentQrTokens = mysqlTable("studentQrTokens", {
+  id: int("id").autoincrement().primaryKey(),
+  studentId: int("studentId").notNull().unique(),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  status: mysqlEnum("status", ["active", "revoked"]).default("active").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type StudentQrToken = typeof studentQrTokens.$inferSelect;
+export type InsertStudentQrToken = typeof studentQrTokens.$inferInsert;
+
 export const sessions = mysqlTable("sessions", {
   id: int("id").autoincrement().primaryKey(),
   className: varchar("className", { length: 160 }).notNull(),

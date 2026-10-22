@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation } from "wouter";
+import { trpc } from "@/lib/trpc";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -43,6 +44,7 @@ import {
   UserRound,
   ReceiptText,
   Users,
+  Upload,
   WalletCards,
   X,
 } from "lucide-react";
@@ -429,6 +431,15 @@ function ScanQrPage({ onNotify }: { onNotify: (message: string) => void }) {
   const [scanMessage, setScanMessage] = useState("Kamera belum dinyalakan.");
   const [manualCode, setManualCode] = useState("");
   const [lastCode, setLastCode] = useState("");
+  const sessionsQuery = trpc.domain.schedule.upcoming.useQuery(undefined, { retry: false });
+  const activeSession = sessionsQuery.data?.find((session) => session.qrStatus === "active");
+  const recordAttendance = trpc.domain.attendance.recordByQrToken.useMutation({
+    onSuccess: (result) => {
+      setScanMessage(result.duplicate ? "Murid sudah tercatat pada sesi ini; saldo tidak dikurangi lagi." : "Kehadiran berhasil dicatat dan sisa sesi diperbarui.");
+      onNotify(result.duplicate ? "Scan ulang terdeteksi. Absensi tetap satu kali." : "Absensi berhasil dicatat.");
+    },
+    onError: (error) => setScanMessage(error.message || "QR belum dapat divalidasi. Pastikan sesi aktif dan Anda berwenang."),
+  });
 
   const stopCamera = () => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -448,8 +459,8 @@ function ScanQrPage({ onNotify }: { onNotify: (message: string) => void }) {
       return;
     }
     setLastCode(normalized);
-    setScanMessage("QR terdeteksi dan siap divalidasi oleh server.");
-    onNotify("QR berhasil dibaca. Validasi absensi server akan dipasang pada tahap berikutnya.");
+    setScanMessage("QR terdeteksi. Memvalidasi kehadiran...");
+    recordAttendance.mutate({ sessionId: activeSession?.id ?? 1, token: normalized, status: "present" });
   };
 
   const scanFrame = async (detector: DetectorInstance) => {
@@ -504,8 +515,8 @@ function ScanQrPage({ onNotify }: { onNotify: (message: string) => void }) {
         <div className="scanner-actions"><button className="button button--dark" onClick={cameraState === "active" ? stopCamera : startCamera}>{cameraState === "active" ? "Matikan kamera" : "Buka kamera"}<Camera size={15} /></button><button className="button button--outline" onClick={() => { setManualCode(""); setLastCode(""); setScanMessage("Siap membaca QR berikutnya."); }}>Reset</button></div>
       </section>
       <aside className="scanner-side">
-        <section className="scanner-session panel"><div className="scanner-session-head"><span className="home-kicker"><ShieldCheck size={14} /> Sesi aktif</span><StatusPill tone="lime">QR aktif</StatusPill></div><strong>Primary B — P2</strong><p>Hari ini · 10:00–11:30 · Ruang 03</p><div className="scan-progress"><span><i style={{ width: "71%" }} /></span><small>5 dari 7 murid sudah hadir</small></div></section>
-        <section className="scanner-manual panel"><span className="eyebrow">Fallback</span><h3>Masukkan kode manual</h3><p>Dipakai jika kamera perangkat tidak tersedia atau QR rusak.</p><form onSubmit={(event) => { event.preventDefault(); acceptCode(manualCode); }}><input value={manualCode} onChange={(event) => setManualCode(event.target.value)} placeholder="Contoh: KBS-2026-0008" aria-label="Kode QR atau nomor induk" /><button className="button button--soft" type="submit">Validasi kode</button></form>{lastCode && <div className="scanner-result"><Check size={16} /><span><strong>{lastCode}</strong><small>Menunggu validasi server</small></span></div>}</section>
+        <section className="scanner-session panel"><div className="scanner-session-head"><span className="home-kicker"><ShieldCheck size={14} /> Sesi aktif</span><StatusPill tone={activeSession ? "lime" : "orange"}>{activeSession ? "QR aktif" : "Demo / belum aktif"}</StatusPill></div><strong>{activeSession?.className ?? "Primary B — P2"}</strong><p>{activeSession ? `${new Date(activeSession.startsAt).toLocaleString("id-ID")} · ${activeSession.room ?? "Ruang belum diatur"}` : "Hari ini · 10:00–11:30 · Ruang 03"}</p><div className="scan-progress"><span><i style={{ width: "71%" }} /></span><small>{activeSession ? "Sesi server tersedia untuk validasi" : "Aktifkan QR sesi dari Jadwal terlebih dahulu"}</small></div></section>
+        <section className="scanner-manual panel"><span className="eyebrow">Fallback</span><h3>Masukkan token QR manual</h3><p>Dipakai jika kamera perangkat tidak tersedia atau QR rusak. Token QR tidak berisi data pribadi murid.</p><form onSubmit={(event) => { event.preventDefault(); acceptCode(manualCode); }}><input value={manualCode} onChange={(event) => setManualCode(event.target.value)} placeholder="Contoh: KBSQR.xxxxx" aria-label="Token QR murid" /><button className="button button--soft" type="submit" disabled={recordAttendance.isPending}>{recordAttendance.isPending ? "Memvalidasi..." : "Validasi token"}</button></form>{lastCode && <div className="scanner-result"><Check size={16} /><span><strong>{lastCode}</strong><small>{recordAttendance.isPending ? "Memvalidasi ke server" : "Hasil validasi tampil di status scanner"}</small></span></div>}</section>
       </aside>
     </div>
   </div>;
@@ -569,9 +580,32 @@ function StudentsPage({ onAction, query }: { onAction: (modal: Exclude<ModalKey,
   return <div className="page-stack"><SectionHeader eyebrow="Data murid" title="Murid aktif" description="20 murid contoh sudah tersedia untuk mencoba alur operasional." action="Tambah murid" onAction={() => onAction("student")} /><div className="stats-strip"><div><span>Total murid</span><strong>86</strong><small>+4,8% bulan ini</small></div><div><span>Aktif</span><strong>79</strong><small>91,8% dari total</small></div><div><span>Hampir habis</span><strong className="text-orange">5</strong><small>Perlu ditawarkan perpanjangan</small></div><div><span>Cuti</span><strong>2</strong><small>1 kembali minggu depan</small></div></div><section className="panel table-panel"><div className="table-toolbar"><div className="filter-chips"><button className="filter-chip filter-chip--active">Semua murid</button><button className="filter-chip">Aktif <strong>79</strong></button><button className="filter-chip">Hampir habis <strong>5</strong></button></div><button className="button button--outline"><Download size={15} /> Ekspor</button></div><div className="snapshot-table-wrap"><table className="data-table"><thead><tr><th>Murid</th><th>Program</th><th>Orang tua/wali</th><th>Sisa sesi</th><th>Status</th><th>Terakhir hadir</th><th /></tr></thead><tbody>{filtered.map((student) => <tr key={student.name}><td><div className="person-cell"><Avatar initials={student.initials} tone={student.tone} /><span><strong>{student.name}</strong><small>ID: KD-{student.initials}024</small></span></div></td><td><StatusPill tone={student.tone}>{student.program}</StatusPill></td><td>{student.guardian}</td><td><strong className={student.sessions <= 2 ? "text-orange" : ""}>{student.sessions}</strong> sesi</td><td><StatusPill tone={student.status === "Aktif" ? "lime" : "orange"}>{student.status}</StatusPill></td><td>{student.last}</td><td><button className="icon-button"><MoreHorizontal size={18} /></button></td></tr>)}</tbody></table></div></section></div>;
 }
 
+function PaymentEvidenceUploader({ onNotify }: { onNotify: (message: string) => void }) {
+  const [invoiceId, setInvoiceId] = useState("1");
+  const [amount, setAmount] = useState("1000000");
+  const [file, setFile] = useState<File | null>(null);
+  const upload = trpc.domain.payments.uploadEvidence.useMutation({
+    onSuccess: (result) => {
+      onNotify(`Bukti pembayaran tersimpan dan menunggu verifikasi. ID #${result.id}`);
+      setFile(null);
+    },
+    onError: (error) => onNotify(error.message || "Bukti pembayaran belum dapat diunggah."),
+  });
+  const submit = () => {
+    if (!file) return onNotify("Pilih file bukti pembayaran terlebih dahulu.");
+    if (file.size > 10 * 1024 * 1024) return onNotify("Ukuran file maksimal 10 MB.");
+    const allowed = ["image/jpeg", "image/png", "application/pdf"] as const;
+    if (!allowed.includes(file.type as (typeof allowed)[number])) return onNotify("Format yang diterima: JPG, PNG, atau PDF.");
+    const reader = new FileReader();
+    reader.onload = () => upload.mutate({ invoiceId: Number(invoiceId), amount: Number(amount), fileName: file.name, mimeType: file.type as (typeof allowed)[number], dataBase64: String(reader.result) });
+    reader.readAsDataURL(file);
+  };
+  return <section className="panel payment-upload-panel"><div className="panel-title-row"><div><span className="eyebrow">Bukti pembayaran</span><h3>Upload transfer untuk diverifikasi</h3><p>JPG, PNG, atau PDF maksimal 10 MB. File disimpan di object storage dan tidak membuka data pribadi murid.</p></div><Upload size={19} /></div><div className="form-grid"><label><span>ID invoice</span><input value={invoiceId} onChange={(event) => setInvoiceId(event.target.value)} inputMode="numeric" /></label><label><span>Nominal transfer</span><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="numeric" /></label><label className="form-grid__wide"><span>File bukti pembayaran</span><input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label></div><div className="settings-save"><span>{file ? <><Check size={15} /> {file.name}</> : "Belum ada file dipilih"}</span><button className="button button--dark" onClick={submit} disabled={upload.isPending}>{upload.isPending ? "Mengunggah..." : "Upload bukti"} <Upload size={15} /></button></div></section>;
+}
+
 function BillingPage({ onAction, onNotify, query }: { onAction: (modal: Exclude<ModalKey, null>) => void; onNotify: (message: string) => void; query: string }) {
   const filtered = invoices.filter((invoice) => `${invoice.id} ${invoice.student} ${invoice.package}`.toLowerCase().includes(query.toLowerCase()));
-  return <div className="page-stack"><SectionHeader eyebrow="Keuangan" title="Invoice & pembayaran" description="Pantau tagihan, verifikasi pembayaran, dan jaga arus kas tetap sehat." action="Buat invoice" onAction={() => onAction("invoice")} /><div className="stats-strip stats-strip--billing"><div><span>Outstanding</span><strong>Rp 6,4 jt</strong><small>8 invoice terbuka</small></div><div><span>Jatuh tempo minggu ini</span><strong className="text-orange">Rp 4,2 jt</strong><small>5 invoice</small></div><div><span>Sudah diterima</span><strong className="text-lime">Rp 28,6 jt</strong><small>Oktober 2026</small></div><div><span>Rasio pelunasan</span><strong>83%</strong><small>+6% vs bulan lalu</small></div></div><section className="panel table-panel"><div className="table-toolbar"><div className="filter-chips"><button className="filter-chip filter-chip--active">Semua <strong>24</strong></button><button className="filter-chip">Belum bayar <strong>8</strong></button><button className="filter-chip">Jatuh tempo <strong>5</strong></button><button className="filter-chip">Lunas <strong>16</strong></button></div><button className="button button--outline"><Download size={15} /> Ekspor</button></div><div className="snapshot-table-wrap"><table className="data-table"><thead><tr><th>No. invoice</th><th>Murid</th><th>Paket</th><th>Nominal</th><th>Jatuh tempo</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{filtered.map((invoice) => <tr key={invoice.id}><td><strong className="invoice-id">{invoice.id}</strong></td><td>{invoice.student}</td><td>{invoice.package}</td><td><strong>{money(invoice.amount)}</strong></td><td>{invoice.due}</td><td><StatusPill tone={invoice.tone}>{invoice.status}</StatusPill></td><td><div className="table-actions"><button className="text-button" onClick={() => onNotify(`Pengingat untuk ${invoice.student} siap dikirim via WhatsApp.`)}><MessageCircle size={14} /> WA</button><button className="icon-button"><MoreHorizontal size={18} /></button></div></td></tr>)}</tbody></table></div></section></div>;
+  return <div className="page-stack"><PaymentEvidenceUploader onNotify={onNotify} /><SectionHeader eyebrow="Keuangan" title="Invoice & pembayaran" description="Pantau tagihan, verifikasi pembayaran, dan jaga arus kas tetap sehat." action="Buat invoice" onAction={() => onAction("invoice")} /><div className="stats-strip stats-strip--billing"><div><span>Outstanding</span><strong>Rp 6,4 jt</strong><small>8 invoice terbuka</small></div><div><span>Jatuh tempo minggu ini</span><strong className="text-orange">Rp 4,2 jt</strong><small>5 invoice</small></div><div><span>Sudah diterima</span><strong className="text-lime">Rp 28,6 jt</strong><small>Oktober 2026</small></div><div><span>Rasio pelunasan</span><strong>83%</strong><small>+6% vs bulan lalu</small></div></div><section className="panel table-panel"><div className="table-toolbar"><div className="filter-chips"><button className="filter-chip filter-chip--active">Semua <strong>24</strong></button><button className="filter-chip">Belum bayar <strong>8</strong></button><button className="filter-chip">Jatuh tempo <strong>5</strong></button><button className="filter-chip">Lunas <strong>16</strong></button></div><button className="button button--outline"><Download size={15} /> Ekspor</button></div><div className="snapshot-table-wrap"><table className="data-table"><thead><tr><th>No. invoice</th><th>Murid</th><th>Paket</th><th>Nominal</th><th>Jatuh tempo</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{filtered.map((invoice) => <tr key={invoice.id}><td><strong className="invoice-id">{invoice.id}</strong></td><td>{invoice.student}</td><td>{invoice.package}</td><td><strong>{money(invoice.amount)}</strong></td><td>{invoice.due}</td><td><StatusPill tone={invoice.tone}>{invoice.status}</StatusPill></td><td><div className="table-actions"><button className="text-button" onClick={() => onNotify(`Pengingat untuk ${invoice.student} siap dikirim via WhatsApp.`)}><MessageCircle size={14} /> WA</button><button className="icon-button"><MoreHorizontal size={18} /></button></div></td></tr>)}</tbody></table></div></section></div>;
 }
 
 function FinancePage({ onAction, onNotify }: { onAction: (modal: Exclude<ModalKey, null>) => void; onNotify: (message: string) => void }) {
