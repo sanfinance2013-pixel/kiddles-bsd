@@ -20,6 +20,12 @@ const unavailable = () => new TRPCError({ code: "PRECONDITION_FAILED", message: 
 const staffId = z.number().int().positive();
 const hashQrToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const newQrToken = () => `KBSQR.${randomBytes(24).toString("base64url")}`;
+const isWithinSessionWindow = (session: { startsAt: Date; endsAt: Date }, now = new Date()) => now >= session.startsAt && now <= session.endsAt;
+const isDuplicateKeyError = (error: unknown) => {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? (error as { code?: string }).code : undefined;
+  return code === "ER_DUP_ENTRY" || String(error).includes("Duplicate entry");
+};
 
 export const domainRouter = router({
   students: router({
@@ -154,6 +160,7 @@ export const domainRouter = router({
         const [session] = await db.select().from(sessions).where(eq(sessions.id, input.sessionId)).limit(1);
         if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Pertemuan tidak ditemukan." });
         const now = new Date();
+        if (input.qrStatus === "active" && !isWithinSessionWindow(session, now)) throw new TRPCError({ code: "FORBIDDEN", message: "QR hanya dapat diaktifkan pada jam kelas yang terjadwal." });
         await db.update(sessions).set({ qrStatus: input.qrStatus, qrActivatedAt: input.qrStatus === "active" ? now : session.qrActivatedAt, qrClosedAt: input.qrStatus === "closed" ? now : session.qrClosedAt, status: input.qrStatus === "active" ? "active" : session.status }).where(eq(sessions.id, input.sessionId));
         await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "session", entityId: input.sessionId, action: `qr:${input.qrStatus}` });
         return { success: true };
@@ -168,12 +175,21 @@ export const domainRouter = router({
         if (!db) throw unavailable();
         const [session] = await db.select().from(sessions).where(eq(sessions.id, input.sessionId)).limit(1);
         if (!session || session.deletedAt || session.qrStatus !== "active") throw new TRPCError({ code: "FORBIDDEN", message: "QR sesi belum aktif atau sudah ditutup." });
+        if (!isWithinSessionWindow(session)) throw new TRPCError({ code: "FORBIDDEN", message: "QR hanya aktif selama jam kelas yang terjadwal." });
         if (ctx.user.role === "teacher" && session.teacherUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Guru tidak ditugaskan pada sesi ini." });
         const [qr] = await db.select().from(studentQrTokens).where(and(eq(studentQrTokens.tokenHash, hashQrToken(input.token)), eq(studentQrTokens.status, "active"))).limit(1);
         if (!qr) throw new TRPCError({ code: "NOT_FOUND", message: "QR murid tidak valid atau sudah dicabut." });
         const [existing] = await db.select().from(attendance).where(and(eq(attendance.sessionId, input.sessionId), eq(attendance.studentId, qr.studentId), isNull(attendance.deletedAt))).limit(1);
         if (existing) return { success: true, duplicate: true, attendanceId: existing.id, studentId: qr.studentId };
-        const result = await db.insert(attendance).values({ sessionId: input.sessionId, studentId: qr.studentId, status: input.status, source: "qr", recordedBy: ctx.user.id });
+        let result;
+        try {
+          result = await db.insert(attendance).values({ sessionId: input.sessionId, studentId: qr.studentId, status: input.status, source: "qr", recordedBy: ctx.user.id });
+        } catch (error) {
+          if (!isDuplicateKeyError(error)) throw error;
+          const [duplicate] = await db.select().from(attendance).where(and(eq(attendance.sessionId, input.sessionId), eq(attendance.studentId, qr.studentId))).limit(1);
+          if (duplicate) return { success: true, duplicate: true, attendanceId: duplicate.id, studentId: qr.studentId };
+          throw error;
+        }
         if (input.status === "present") {
           const [student] = await db.select().from(students).where(eq(students.id, qr.studentId)).limit(1);
           if (student && student.remainingSessions > 0) await db.update(students).set({ remainingSessions: student.remainingSessions - 1 }).where(eq(students.id, qr.studentId));
