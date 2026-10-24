@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { AdminAssistant } from "@/components/AdminAssistant";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -724,5 +725,6 @@ export default function Home() {
     </main>
     {toast && <div className="toast"><span className="toast-check"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Tutup pesan"><X size={15} /></button></div>}
     {modal && <Modal kind={modal} onClose={() => setModal(null)} onSave={handleSave} />}
+    {(role === "Owner" || role === "Admin") && <AdminAssistant role={role} page={pageTitle} />}
   </div>;
 }
