@@ -183,3 +183,72 @@ export const activityLogs = mysqlTable("activityLogs", {
 
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = typeof activityLogs.$inferInsert;
+
+export const chartOfAccounts = mysqlTable("chartOfAccounts", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 20 }).notNull().unique(),
+  name: varchar("name", { length: 160 }).notNull(),
+  accountType: mysqlEnum("accountType", ["asset", "liability", "equity", "revenue", "expense"]).notNull(),
+  normalBalance: mysqlEnum("normalBalance", ["debit", "credit"]).notNull(),
+  isActive: int("isActive").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ChartOfAccount = typeof chartOfAccounts.$inferSelect;
+export type InsertChartOfAccount = typeof chartOfAccounts.$inferInsert;
+
+export const procurements = mysqlTable("procurements", {
+  id: int("id").autoincrement().primaryKey(),
+  purchaseNumber: varchar("purchaseNumber", { length: 48 }).notNull().unique(),
+  vendorName: varchar("vendorName", { length: 160 }).notNull(),
+  itemName: varchar("itemName", { length: 200 }).notNull(),
+  category: mysqlEnum("category", ["operasional", "aset_peralatan", "bahan_ajar", "marketing", "kebersihan", "teknologi", "lainnya"]).notNull(),
+  purchaseDate: timestamp("purchaseDate").notNull(),
+  subtotal: int("subtotal").notNull(),
+  tax: int("tax").default(0).notNull(),
+  total: int("total").notNull(),
+  paymentMethod: mysqlEnum("paymentMethod", ["cash", "bank", "payable"]).notNull(),
+  status: mysqlEnum("status", ["draft", "submitted", "approved", "paid", "cancelled"]).default("draft").notNull(),
+  expenseAccountId: int("expenseAccountId").notNull(),
+  assetAccountId: int("assetAccountId"),
+  note: text("note"),
+  createdBy: int("createdBy"),
+  approvedBy: int("approvedBy"),
+  approvedAt: timestamp("approvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+});
+
+export type Procurement = typeof procurements.$inferSelect;
+export type InsertProcurement = typeof procurements.$inferInsert;
+
+export const journalEntries = mysqlTable("journalEntries", {
+  id: int("id").autoincrement().primaryKey(),
+  entryNumber: varchar("entryNumber", { length: 48 }).notNull().unique(),
+  entryDate: timestamp("entryDate").notNull(),
+  referenceType: varchar("referenceType", { length: 60 }).notNull(),
+  referenceId: int("referenceId"),
+  description: varchar("description", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["draft", "posted", "void"]).default("posted").notNull(),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type JournalEntry = typeof journalEntries.$inferSelect;
+export type InsertJournalEntry = typeof journalEntries.$inferInsert;
+
+export const journalLines = mysqlTable("journalLines", {
+  id: int("id").autoincrement().primaryKey(),
+  journalEntryId: int("journalEntryId").notNull(),
+  accountId: int("accountId").notNull(),
+  debit: int("debit").default(0).notNull(),
+  credit: int("credit").default(0).notNull(),
+  memo: varchar("memo", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type JournalLine = typeof journalLines.$inferSelect;
+export type InsertJournalLine = typeof journalLines.$inferInsert;

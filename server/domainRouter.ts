@@ -5,8 +5,12 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   activityLogs,
   attendance,
+  chartOfAccounts,
   invoices,
+  journalEntries,
+  journalLines,
   paymentEvidence,
+  procurements,
   sessions,
   studentQrTokens,
   students,
@@ -27,6 +31,43 @@ const isDuplicateKeyError = (error: unknown) => {
   const code = "code" in error ? (error as { code?: string }).code : undefined;
   return code === "ER_DUP_ENTRY" || String(error).includes("Duplicate entry");
 };
+
+const defaultAccounts = [
+  { code: "1101", name: "Kas", accountType: "asset" as const, normalBalance: "debit" as const },
+  { code: "1102", name: "Bank", accountType: "asset" as const, normalBalance: "debit" as const },
+  { code: "1201", name: "Peralatan belajar", accountType: "asset" as const, normalBalance: "debit" as const },
+  { code: "2101", name: "Utang usaha", accountType: "liability" as const, normalBalance: "credit" as const },
+  { code: "3101", name: "Modal pemilik", accountType: "equity" as const, normalBalance: "credit" as const },
+  { code: "4101", name: "Pendapatan kursus", accountType: "revenue" as const, normalBalance: "credit" as const },
+  { code: "5101", name: "Beban operasional", accountType: "expense" as const, normalBalance: "debit" as const },
+  { code: "5102", name: "Beban bahan ajar", accountType: "expense" as const, normalBalance: "debit" as const },
+  { code: "5103", name: "Beban marketing", accountType: "expense" as const, normalBalance: "debit" as const },
+  { code: "5104", name: "Beban kebersihan & utilitas", accountType: "expense" as const, normalBalance: "debit" as const },
+];
+
+async function ensureDefaultAccounts(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const existing = await db.select().from(chartOfAccounts).limit(1);
+  if (existing.length === 0) await db.insert(chartOfAccounts).values(defaultAccounts);
+  return db.select().from(chartOfAccounts).where(eq(chartOfAccounts.isActive, 1)).orderBy(chartOfAccounts.code);
+}
+
+async function postProcurementJournal(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, input: { id: number; itemName: string; total: number; purchaseDate: Date; paymentMethod: "cash" | "bank" | "payable"; expenseAccountId: number; assetAccountId: number | null; category: string }, userId: number) {
+  const [existing] = await db.select().from(journalEntries).where(and(eq(journalEntries.referenceType, "procurement"), eq(journalEntries.referenceId, input.id))).limit(1);
+  if (existing) return existing.id;
+  const entryNumber = `JE-KBS-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(Date.now()).slice(-5)}`;
+  const entry = await db.insert(journalEntries).values({ entryNumber, entryDate: input.purchaseDate, referenceType: "procurement", referenceId: input.id, description: `Pembelian ${input.itemName}`, status: "posted", createdBy: userId });
+  const journalEntryId = Number(entry[0].insertId);
+  const debitAccountId = input.category === "aset_peralatan" && input.assetAccountId ? input.assetAccountId : input.expenseAccountId;
+  const creditCode = input.paymentMethod === "cash" ? "1101" : input.paymentMethod === "bank" ? "1102" : "2101";
+  const [creditAccount] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, creditCode)).limit(1);
+  if (!creditAccount) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Akun lawan transaksi belum tersedia." });
+  await db.insert(journalLines).values([
+    { journalEntryId, accountId: debitAccountId, debit: input.total, credit: 0, memo: input.itemName },
+    { journalEntryId, accountId: creditAccount.id, debit: 0, credit: input.total, memo: input.paymentMethod === "payable" ? "Dicatat sebagai utang usaha" : "Pembayaran pembelian" },
+  ]);
+  await db.insert(activityLogs).values({ actorUserId: userId, entityType: "journal_entry", entityId: journalEntryId, action: "posted", metadata: JSON.stringify({ referenceType: "procurement", procurementId: input.id, entryNumber }) });
+  return journalEntryId;
+}
 
 export const domainRouter = router({
   assistant: router({
@@ -51,6 +92,61 @@ export const domainRouter = router({
         const content = response.choices[0]?.message?.content;
         if (!content || typeof content !== "string") throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Asisten belum memberikan jawaban. Silakan coba lagi." });
         return { content };
+      }),
+  }),
+
+  accounting: router({
+    listAccounts: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      return ensureDefaultAccounts(db);
+    }),
+    listJournal: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      return db.select().from(journalEntries).orderBy(desc(journalEntries.entryDate)).limit(100);
+    }),
+    summary: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return { accounts: [], lines: [] };
+      const accounts = await ensureDefaultAccounts(db);
+      const lines = await db.select().from(journalLines).orderBy(desc(journalLines.createdAt)).limit(500);
+      return { accounts, lines };
+    }),
+  }),
+
+  procurement: router({
+    list: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      return db.select().from(procurements).where(isNull(procurements.deletedAt)).orderBy(desc(procurements.purchaseDate)).limit(100);
+    }),
+    create: managerProcedure
+      .input(z.object({
+        vendorName: z.string().trim().min(2).max(160),
+        itemName: z.string().trim().min(2).max(200),
+        category: z.enum(["operasional", "aset_peralatan", "bahan_ajar", "marketing", "kebersihan", "teknologi", "lainnya"]),
+        purchaseDate: z.coerce.date(),
+        subtotal: z.number().int().positive(),
+        tax: z.number().int().min(0).default(0),
+        paymentMethod: z.enum(["cash", "bank", "payable"]),
+        expenseAccountId: staffId,
+        assetAccountId: staffId.nullish(),
+        note: z.string().trim().max(500).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const accounts = await ensureDefaultAccounts(db);
+        const selectedDebit = accounts.find((account) => account.id === input.expenseAccountId);
+        if (!selectedDebit) throw new TRPCError({ code: "BAD_REQUEST", message: "Akun biaya yang dipilih tidak ditemukan." });
+        const total = input.subtotal + input.tax;
+        const purchaseNumber = `PO-KBS-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(Date.now()).slice(-5)}`;
+        const result = await db.insert(procurements).values({ ...input, purchaseNumber, total, assetAccountId: input.assetAccountId ?? null, note: input.note || null, status: "approved", createdBy: ctx.user.id, approvedBy: ctx.user.id, approvedAt: new Date() });
+        const id = Number(result[0].insertId);
+        await postProcurementJournal(db, { id, itemName: input.itemName, total, purchaseDate: input.purchaseDate, paymentMethod: input.paymentMethod, expenseAccountId: input.expenseAccountId, assetAccountId: input.assetAccountId ?? null, category: input.category }, ctx.user.id);
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "procurement", entityId: id, action: "created_and_posted", metadata: JSON.stringify({ purchaseNumber, category: input.category, total }) });
+        return { id, purchaseNumber, total, status: "approved" as const };
       }),
   }),
 

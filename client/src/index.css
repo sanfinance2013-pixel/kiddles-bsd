@@ -766,3 +766,28 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .ai-assistant-note { padding: 8px 14px 11px; color: #68717b; background: #fff; font-size: 10px; line-height: 1.35; }
 @keyframes assistant-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (max-width: 640px) { .ai-assistant-fab { right: 16px; bottom: 16px; padding-right: 12px; } .ai-assistant-popover { right: 12px; bottom: 76px; width: calc(100vw - 24px); border-radius: 17px; } .ai-assistant-chat > div { height: min(490px, calc(100dvh - 165px)) !important; } }
+
+/* Procurement & accounting */
+.accounting-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.accounting-kpi { display: flex; min-height: 112px; flex-direction: column; gap: 7px; padding: 18px 20px; }
+.accounting-kpi span { color: #89939f; font-size: 10px; font-weight: 800; }
+.accounting-kpi strong { color: var(--ink); font-size: 23px; letter-spacing: -.045em; }
+.accounting-kpi small { color: #a4acb4; font-size: 9px; }
+.procurement-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 14px; }
+.procurement-form { padding: 24px; }
+.procurement-form .form-grid { margin-top: 20px; }
+.procurement-submit { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 8px; color: #87919d; font-size: 10px; line-height: 1.5; }
+.procurement-submit .button { flex: 0 0 auto; }
+.accounting-guide { padding: 24px; background: linear-gradient(145deg, #f4faec, #fff); }
+.accounting-guide h3 { margin: 7px 0 21px; font-size: 19px; letter-spacing: -.04em; }
+.accounting-flow { display: flex; flex-direction: column; gap: 12px; }
+.accounting-flow > div { display: grid; grid-template-columns: 27px 1fr; column-gap: 10px; align-items: center; }
+.accounting-flow strong { grid-row: span 2; display: grid; width: 27px; height: 27px; place-items: center; border-radius: 9px; background: #dff1ca; color: #629b30; font-size: 11px; }
+.accounting-flow span { color: var(--ink); font-size: 11px; font-weight: 850; }
+.accounting-flow small { color: #96a09a; font-size: 9px; }
+.accounting-guide .mini-insight { margin-top: 22px; }
+.empty-table-state { padding: 22px 0; color: #929ba6; font-size: 11px; text-align: center; }
+@media (max-width: 860px) { .procurement-layout { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .accounting-kpis { grid-template-columns: 1fr; } .procurement-submit { align-items: stretch; flex-direction: column; } .procurement-submit .button { width: 100%; } }
+
+.table-subtext { display: block; margin-top: 3px; color: #9aa3ad; font-size: 9px; font-weight: 500; }
