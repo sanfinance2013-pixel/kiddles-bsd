@@ -791,3 +791,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media (max-width: 620px) { .accounting-kpis { grid-template-columns: 1fr; } .procurement-submit { align-items: stretch; flex-direction: column; } .procurement-submit .button { width: 100%; } }
 
 .table-subtext { display: block; margin-top: 3px; color: #9aa3ad; font-size: 9px; font-weight: 500; }
+
+/* Icon-base navigation: the app opens directly to menu modules, without a sidebar. */
+.main-shell { width: 100%; margin-left: 0; }
+.home-nav-button { margin-right: 4px; background: var(--pink-soft); color: var(--pink); }
+.home-nav-button:hover { background: #f8d4e2; color: var(--pink); }

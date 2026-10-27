@@ -5,7 +5,7 @@ import { useState } from "react";
 
 type AdminAssistantProps = {
   page: string;
-  role: "Owner" | "Admin";
+  role: string;
 };
 
 export function AdminAssistant({ page, role }: AdminAssistantProps) {
@@ -28,11 +28,11 @@ export function AdminAssistant({ page, role }: AdminAssistantProps) {
   return <>
     {open && <div className="ai-assistant-popover" role="dialog" aria-label="AI Personal Assistant">
       <div className="ai-assistant-head">
-        <div className="ai-assistant-title"><span className="ai-assistant-avatar"><Sparkles size={17} /></span><span><strong>Kak KIDDLES</strong><small>Personal Assistant · {role}</small></span></div>
+        <div className="ai-assistant-title"><span className="ai-assistant-avatar"><Sparkles size={17} /></span><span><strong>Kak KIDDLES</strong><small>Customer Support · {role}</small></span></div>
         <button className="icon-button" onClick={() => setOpen(false)} aria-label="Tutup AI Personal Assistant"><X size={18} /></button>
       </div>
       <div className="ai-assistant-chat"><AIChatBox messages={messages} onSendMessage={sendMessage} isLoading={chat.isPending} height="min(520px, calc(100dvh - 190px))" placeholder="Tulis pertanyaan Anda..." emptyStateMessage="Ada yang bisa saya bantu?" suggestedPrompts={["Apa yang perlu saya kerjakan hari ini?", "Jelaskan cara memverifikasi pembayaran.", "Bagaimana cara scan absensi murid?", "Bantu saya memahami halaman ini."]} /></div>
-      <div className="ai-assistant-note">Jawaban AI membantu menjelaskan alur. Periksa kembali data sebelum menyimpan.</div>
+      <div className="ai-assistant-note">Kak KIDDLES menjelaskan alur sesuai role Anda. Periksa kembali data sebelum menyimpan.</div>
     </div>}
     <button className={`ai-assistant-fab ${open ? "ai-assistant-fab--open" : ""}`} onClick={() => setOpen((value) => !value)} aria-label={open ? "Tutup AI Personal Assistant" : "Buka AI Personal Assistant"} aria-expanded={open}><span className="ai-assistant-fab-icon">{open ? <X size={21} /> : <MessageCircle size={21} />}</span><span className="ai-assistant-fab-label">Tanya Kak KIDDLES</span></button>
   </>;
