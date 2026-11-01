@@ -27,6 +27,7 @@ export const students = mysqlTable("students", {
   guardianPhone: varchar("guardianPhone", { length: 32 }),
   program: varchar("program", { length: 80 }).notNull(),
   status: mysqlEnum("status", ["active", "leave", "stopped"]).default("active").notNull(),
+  classStatus: mysqlEnum("classStatus", ["active", "inactive"]).default("active").notNull(),
   remainingSessions: int("remainingSessions").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

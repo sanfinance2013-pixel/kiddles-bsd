@@ -76,3 +76,9 @@
 - [x] Owner/Admin dapat mencatat transaksi PPh 21/26, PPh 23, PPh Final UMKM, PPh Badan, PPN keluaran/masukan, bea meterai, dan pajak lain dengan dasar pengenaan, tarif, lawan transaksi, status, serta catatan.
 - [x] Modul pajak menyediakan rekap masa per jenis pajak, total pajak, dan tanggal jatuh tempo acuan; laporan masa dapat disimpan sebagai PDF kerja.
 - [x] UI menjelaskan bahwa status jasa pendidikan, izin, PKP, bentuk badan, fasilitas, dan tarif harus diverifikasi dengan DJP/akuntan; sistem tidak mengklaim sebagai SPT resmi dan tidak mengaktifkan insentif secara otomatis.
+
+## Penerbitan invoice manual dan otomatis
+- [x] Owner/Admin dapat membuat invoice manual untuk satu murid melalui alur invoice yang sudah tersedia.
+- [x] Owner/Admin dapat memilih paket, jatuh tempo, diskon, biaya admin, dan pajak lalu membuat invoice otomatis untuk seluruh murid yang berstatus aktif dan memiliki `classStatus` aktif.
+- [x] Generate otomatis menampilkan jumlah kandidat kelas aktif, meminta konfirmasi sebelum membuat invoice, mencatat activity log, dan melewati invoice duplikat untuk murid/paket/tanggal jatuh tempo yang sama.
+- [x] Murid yang cuti/berhenti atau kelasnya tidak aktif tidak ikut generate otomatis.

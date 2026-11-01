@@ -9,6 +9,7 @@ import {
   invoices,
   journalEntries,
   journalLines,
+  packages,
   paymentEvidence,
   procurements,
   sessions,
@@ -295,6 +296,16 @@ export const domainRouter = router({
       if (!db) return [];
       return db.select().from(invoices).where(isNull(invoices.deletedAt)).orderBy(desc(invoices.createdAt)).limit(100);
     }),
+    packages: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      return db.select().from(packages).where(eq(packages.isActive, 1)).orderBy(packages.name);
+    }),
+    activeClassCandidates: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      return db.select({ id: students.id, studentNo: students.studentNo, fullName: students.fullName, program: students.program, remainingSessions: students.remainingSessions }).from(students).where(and(eq(students.status, "active"), eq(students.classStatus, "active"), isNull(students.deletedAt))).orderBy(students.fullName).limit(500);
+    }),
     createInvoice: managerProcedure
       .input(z.object({ studentId: staffId, subtotal: z.number().int().min(0), discount: z.number().int().min(0).default(0), adminFee: z.number().int().min(0).default(0), tax: z.number().int().min(0).default(0), dueDate: z.coerce.date() }))
       .mutation(async ({ input, ctx }) => {
@@ -306,6 +317,30 @@ export const domainRouter = router({
         const result = await db.insert(invoices).values({ ...input, invoiceNumber, total, paidAmount: 0, status: "unpaid" });
         await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "invoice", entityId: Number(result[0].insertId), action: "created", metadata: JSON.stringify({ invoiceNumber, total }) });
         return { id: Number(result[0].insertId), invoiceNumber, total };
+      }),
+    generateForActiveClass: managerProcedure
+      .input(z.object({ packageId: staffId, dueDate: z.coerce.date(), discount: z.number().int().min(0).default(0), adminFee: z.number().int().min(0).default(0), tax: z.number().int().min(0).default(0) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const [selectedPackage] = await db.select().from(packages).where(and(eq(packages.id, input.packageId), eq(packages.isActive, 1))).limit(1);
+        if (!selectedPackage) throw new TRPCError({ code: "NOT_FOUND", message: "Paket aktif tidak ditemukan." });
+        if (input.discount > selectedPackage.price) throw new TRPCError({ code: "BAD_REQUEST", message: "Diskon tidak boleh melebihi harga paket." });
+        const activeStudents = await db.select().from(students).where(and(eq(students.status, "active"), eq(students.classStatus, "active"), isNull(students.deletedAt))).orderBy(students.fullName).limit(500);
+        let created = 0; let skipped = 0;
+        const createdInvoices: Array<{ studentId: number; invoiceNumber: string; total: number }> = [];
+        for (const student of activeStudents) {
+          const existing = await db.select({ id: invoices.id }).from(invoices).where(and(eq(invoices.studentId, student.id), eq(invoices.packageId, selectedPackage.id), eq(invoices.dueDate, input.dueDate), isNull(invoices.deletedAt))).limit(1);
+          if (existing.length > 0) { skipped += 1; continue; }
+          const total = selectedPackage.price - input.discount + input.adminFee + input.tax;
+          const invoiceNumber = `INV-KBS-${input.dueDate.toISOString().slice(0, 10).replaceAll("-", "")}-${student.id}-${String(Date.now()).slice(-4)}`;
+          const result = await db.insert(invoices).values({ invoiceNumber, studentId: student.id, packageId: selectedPackage.id, subtotal: selectedPackage.price, discount: input.discount, adminFee: input.adminFee, tax: input.tax, total, paidAmount: 0, status: "unpaid", dueDate: input.dueDate });
+          const invoiceId = Number(result[0].insertId);
+          created += 1;
+          createdInvoices.push({ studentId: student.id, invoiceNumber, total });
+          await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "invoice", entityId: invoiceId, action: "created:active_class_bulk", metadata: JSON.stringify({ invoiceNumber, studentId: student.id, packageId: selectedPackage.id, dueDate: input.dueDate.toISOString() }) });
+        }
+        return { created, skipped, candidates: activeStudents.length, invoices: createdInvoices };
       }),
   }),
 

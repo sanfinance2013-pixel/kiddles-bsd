@@ -43,6 +43,13 @@
       "when": 1793543088925,
       "tag": "0005_early_infant_terrible",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1793545707558,
+      "tag": "0006_dapper_sunfire",
+      "breakpoints": true
     }
   ]
 }
