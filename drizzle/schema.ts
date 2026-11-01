@@ -252,3 +252,61 @@ export const journalLines = mysqlTable("journalLines", {
 
 export type JournalLine = typeof journalLines.$inferSelect;
 export type InsertJournalLine = typeof journalLines.$inferInsert;
+
+export const taxProfiles = mysqlTable("taxProfiles", {
+  id: int("id").autoincrement().primaryKey(),
+  taxpayerName: varchar("taxpayerName", { length: 200 }).notNull(),
+  npwp: varchar("npwp", { length: 32 }),
+  nitku: varchar("nitku", { length: 32 }),
+  entityType: mysqlEnum("entityType", ["orang_pribadi", "pt", "cv", "koperasi", "lainnya"]).notNull(),
+  taxRegime: mysqlEnum("taxRegime", ["umkm_final_05", "general_corporate_22", "personal_progressive", "custom"]).notNull(),
+  isPkp: int("isPkp").default(0).notNull(),
+  educationLicenseVerified: int("educationLicenseVerified").default(0).notNull(),
+  vatTreatment: mysqlEnum("vatTreatment", ["non_ppn_education", "ppn_11", "ppn_12_luxury", "custom"]).notNull(),
+  customPphRateBps: int("customPphRateBps"),
+  customVatRateBps: int("customVatRateBps"),
+  taxYear: int("taxYear").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TaxProfile = typeof taxProfiles.$inferSelect;
+export type InsertTaxProfile = typeof taxProfiles.$inferInsert;
+
+export const taxTransactions = mysqlTable("taxTransactions", {
+  id: int("id").autoincrement().primaryKey(),
+  period: varchar("period", { length: 7 }).notNull(),
+  taxType: mysqlEnum("taxType", ["pph21", "pph23", "pph_final_umkm", "pph_badan", "ppn_keluaran", "ppn_masukan", "materai", "other"]).notNull(),
+  referenceType: varchar("referenceType", { length: 60 }),
+  referenceId: int("referenceId"),
+  counterpartyName: varchar("counterpartyName", { length: 180 }),
+  taxBase: int("taxBase").notNull(),
+  rateBps: int("rateBps").notNull(),
+  taxAmount: int("taxAmount").notNull(),
+  status: mysqlEnum("status", ["draft", "ready", "paid", "reported"]).default("draft").notNull(),
+  note: text("note"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+});
+
+export type TaxTransaction = typeof taxTransactions.$inferSelect;
+export type InsertTaxTransaction = typeof taxTransactions.$inferInsert;
+
+export const taxReports = mysqlTable("taxReports", {
+  id: int("id").autoincrement().primaryKey(),
+  period: varchar("period", { length: 7 }).notNull(),
+  taxType: mysqlEnum("taxType", ["pph21", "pph23", "pph_final_umkm", "pph_badan", "ppn_keluaran", "ppn_masukan", "materai", "other"]).notNull(),
+  totalBase: int("totalBase").default(0).notNull(),
+  totalTax: int("totalTax").default(0).notNull(),
+  dueDate: timestamp("dueDate").notNull(),
+  status: mysqlEnum("status", ["draft", "ready", "paid", "reported"]).default("draft").notNull(),
+  generatedAt: timestamp("generatedAt").defaultNow().notNull(),
+  createdBy: int("createdBy"),
+  note: text("note"),
+});
+
+export type TaxReport = typeof taxReports.$inferSelect;
+export type InsertTaxReport = typeof taxReports.$inferInsert;

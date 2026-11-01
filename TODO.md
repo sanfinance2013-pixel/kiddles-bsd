@@ -68,3 +68,11 @@
 - [ ] Invoice lama mempertahankan snapshot perhitungannya dan tidak berubah ketika konfigurasi pajak/biaya admin diperbarui; koreksi invoice memakai workflow audit, bukan edit langsung.
 - [ ] Owner/Admin dapat membuat periode payroll guru dari sesi valid, tarif per sesi/jam, bonus, potongan, pajak/withholding bila dikonfigurasi, dan menghasilkan slip honor PDF.
 - [ ] Payroll memiliki status Draft, Ditinjau, Disetujui, Dibayar, dan Dibatalkan; bukti transfer payroll dapat diambil melalui kamera atau upload, diverifikasi, dan dibatasi kepada Owner/Admin serta guru terkait.
+
+## Laporan keuangan bulanan dan pajak Indonesia
+- [x] Owner/Admin dapat memilih periode bulan pada halaman `/reports` dan melihat pendapatan, beban, laba/rugi bersih, aset, liabilitas, serta jurnal berstatus posted untuk periode tersebut.
+- [x] Laporan keuangan bulanan dapat dibuka dalam format print-friendly dan disimpan sebagai PDF dari browser.
+- [x] Modul `/tax` menyimpan profil wajib pajak cabang: nama, NPWP, NITKU, bentuk badan, skema PPh, status PKP, verifikasi izin pendidikan, dan perlakuan PPN.
+- [x] Owner/Admin dapat mencatat transaksi PPh 21/26, PPh 23, PPh Final UMKM, PPh Badan, PPN keluaran/masukan, bea meterai, dan pajak lain dengan dasar pengenaan, tarif, lawan transaksi, status, serta catatan.
+- [x] Modul pajak menyediakan rekap masa per jenis pajak, total pajak, dan tanggal jatuh tempo acuan; laporan masa dapat disimpan sebagai PDF kerja.
+- [x] UI menjelaskan bahwa status jasa pendidikan, izin, PKP, bentuk badan, fasilitas, dan tarif harus diverifikasi dengan DJP/akuntan; sistem tidak mengklaim sebagai SPT resmi dan tidak mengaktifkan insentif secara otomatis.

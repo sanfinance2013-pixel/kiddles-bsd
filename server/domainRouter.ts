@@ -14,6 +14,9 @@ import {
   sessions,
   studentQrTokens,
   students,
+  taxProfiles,
+  taxReports,
+  taxTransactions,
   teacherPayouts,
 } from "../drizzle/schema";
 import { managerProcedure, protectedProcedure, router, staffProcedure } from "./_core/trpc";
@@ -69,6 +72,18 @@ async function postProcurementJournal(db: NonNullable<Awaited<ReturnType<typeof 
   return journalEntryId;
 }
 
+const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+const periodInput = z.string().regex(periodPattern, "Periode harus berformat YYYY-MM.");
+const periodBounds = (period: string) => {
+  const [year, month] = period.split("-").map(Number);
+  return { start: new Date(Date.UTC(year, month - 1, 1)), end: new Date(Date.UTC(year, month, 1)) };
+};
+const taxDueDate = (period: string, taxType: string) => {
+  const [year, month] = period.split("-").map(Number);
+  if (taxType === "ppn_keluaran" || taxType === "ppn_masukan") return new Date(Date.UTC(year, month + 1, 0, 23, 59, 59));
+  return new Date(Date.UTC(year, month, 20, 23, 59, 59));
+};
+
 export const domainRouter = router({
   assistant: router({
     chat: protectedProcedure
@@ -112,6 +127,85 @@ export const domainRouter = router({
       const lines = await db.select().from(journalLines).orderBy(desc(journalLines.createdAt)).limit(500);
       return { accounts, lines };
     }),
+    monthlyReport: managerProcedure
+      .input(z.object({ period: periodInput }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return { period: input.period, accounts: [], entries: [], lines: [], revenue: 0, expense: 0, netIncome: 0, assets: 0, liabilities: 0 };
+        const { start, end } = periodBounds(input.period);
+        const accounts = await ensureDefaultAccounts(db);
+        const entries = await db.select().from(journalEntries).where(eq(journalEntries.status, "posted")).orderBy(desc(journalEntries.entryDate)).limit(500);
+        const periodEntries = entries.filter((entry) => entry.entryDate >= start && entry.entryDate < end);
+        const entryIds = new Set(periodEntries.map((entry) => entry.id));
+        const allLines = await db.select().from(journalLines).orderBy(desc(journalLines.createdAt)).limit(1000);
+        const lines = allLines.filter((line) => entryIds.has(line.journalEntryId));
+        const byType = (type: string) => lines.filter((line) => accounts.find((account) => account.id === line.accountId)?.accountType === type).reduce((total, line) => total + line.debit - line.credit, 0);
+        const revenue = Math.max(0, -byType("revenue"));
+        const expense = Math.max(0, byType("expense"));
+        return { period: input.period, accounts, entries: periodEntries, lines, revenue, expense, netIncome: revenue - expense, assets: byType("asset"), liabilities: Math.max(0, -byType("liability")) };
+      }),
+  }),
+
+  tax: router({
+    profile: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return null;
+      const [profile] = await db.select().from(taxProfiles).orderBy(desc(taxProfiles.updatedAt)).limit(1);
+      return profile ?? null;
+    }),
+    saveProfile: managerProcedure
+      .input(z.object({
+        taxpayerName: z.string().trim().min(2).max(200),
+        npwp: z.string().trim().max(32).optional(),
+        nitku: z.string().trim().max(32).optional(),
+        entityType: z.enum(["orang_pribadi", "pt", "cv", "koperasi", "lainnya"]),
+        taxRegime: z.enum(["umkm_final_05", "general_corporate_22", "personal_progressive", "custom"]),
+        isPkp: z.boolean(),
+        educationLicenseVerified: z.boolean(),
+        vatTreatment: z.enum(["non_ppn_education", "ppn_11", "ppn_12_luxury", "custom"]),
+        customPphRateBps: z.number().int().min(0).max(10000).nullish(),
+        customVatRateBps: z.number().int().min(0).max(10000).nullish(),
+        taxYear: z.number().int().min(2020).max(2100),
+        notes: z.string().trim().max(1000).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const [existing] = await db.select().from(taxProfiles).limit(1);
+        const values = { ...input, npwp: input.npwp || null, nitku: input.nitku || null, isPkp: input.isPkp ? 1 : 0, educationLicenseVerified: input.educationLicenseVerified ? 1 : 0, customPphRateBps: input.customPphRateBps ?? null, customVatRateBps: input.customVatRateBps ?? null, notes: input.notes || null };
+        if (existing) await db.update(taxProfiles).set(values).where(eq(taxProfiles.id, existing.id));
+        else await db.insert(taxProfiles).values(values);
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "tax_profile", entityId: existing?.id ?? null, action: "saved" });
+        return { success: true };
+      }),
+    listTransactions: managerProcedure
+      .input(z.object({ period: periodInput }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return [];
+        return db.select().from(taxTransactions).where(and(eq(taxTransactions.period, input.period), isNull(taxTransactions.deletedAt))).orderBy(desc(taxTransactions.createdAt)).limit(500);
+      }),
+    addTransaction: managerProcedure
+      .input(z.object({ period: periodInput, taxType: z.enum(["pph21", "pph23", "pph_final_umkm", "pph_badan", "ppn_keluaran", "ppn_masukan", "materai", "other"]), counterpartyName: z.string().trim().max(180).optional(), taxBase: z.number().int().min(0), rateBps: z.number().int().min(0).max(10000), note: z.string().trim().max(500).optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const taxAmount = Math.round(input.taxBase * input.rateBps / 10000);
+        const result = await db.insert(taxTransactions).values({ ...input, counterpartyName: input.counterpartyName || null, taxAmount, status: "ready", note: input.note || null, createdBy: ctx.user.id });
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "tax_transaction", entityId: Number(result[0].insertId), action: "created", metadata: JSON.stringify({ period: input.period, taxType: input.taxType, taxAmount }) });
+        return { id: Number(result[0].insertId), taxAmount };
+      }),
+    monthlyReport: managerProcedure
+      .input(z.object({ period: periodInput }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return { period: input.period, profile: null, transactions: [], byType: [], totalTax: 0 };
+        const [profile] = await db.select().from(taxProfiles).orderBy(desc(taxProfiles.updatedAt)).limit(1);
+        const transactions = await db.select().from(taxTransactions).where(and(eq(taxTransactions.period, input.period), isNull(taxTransactions.deletedAt))).orderBy(desc(taxTransactions.createdAt)).limit(500);
+        const types = ["pph21", "pph23", "pph_final_umkm", "pph_badan", "ppn_keluaran", "ppn_masukan", "materai", "other"] as const;
+        const byType = types.map((taxType) => { const rows = transactions.filter((item) => item.taxType === taxType); return { taxType, taxBase: rows.reduce((sum, row) => sum + row.taxBase, 0), taxAmount: rows.reduce((sum, row) => sum + row.taxAmount, 0), dueDate: taxDueDate(input.period, taxType) }; }).filter((item) => item.taxBase > 0 || item.taxAmount > 0);
+        return { period: input.period, profile: profile ?? null, transactions, byType, totalTax: transactions.reduce((sum, item) => sum + item.taxAmount, 0) };
+      }),
   }),
 
   procurement: router({
