@@ -294,7 +294,12 @@ export const domainRouter = router({
     listInvoices: protectedProcedure.query(async () => {
       const db = await getDb();
       if (!db) return [];
-      return db.select().from(invoices).where(isNull(invoices.deletedAt)).orderBy(desc(invoices.createdAt)).limit(100);
+      const [rows, studentRows, packageRows] = await Promise.all([
+        db.select().from(invoices).where(isNull(invoices.deletedAt)).orderBy(desc(invoices.createdAt)).limit(100),
+        db.select().from(students),
+        db.select().from(packages),
+      ]);
+      return rows.map((invoice) => ({ ...invoice, student: studentRows.find((student) => student.id === invoice.studentId) ?? null, package: packageRows.find((item) => item.id === invoice.packageId) ?? null }));
     }),
     packages: managerProcedure.query(async () => {
       const db = await getDb();
@@ -418,6 +423,24 @@ export const domainRouter = router({
   }),
 
   attendance: router({
+    recordManual: staffProcedure
+      .input(z.object({ sessionId: staffId, studentId: staffId, status: z.enum(["present", "excused", "sick", "absent"]) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const [session] = await db.select().from(sessions).where(and(eq(sessions.id, input.sessionId), isNull(sessions.deletedAt))).limit(1);
+        if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesi kelas tidak ditemukan." });
+        if (ctx.user.role === "teacher" && session.teacherUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Guru tidak ditugaskan pada sesi ini." });
+        const [existing] = await db.select().from(attendance).where(and(eq(attendance.sessionId, input.sessionId), eq(attendance.studentId, input.studentId), isNull(attendance.deletedAt))).limit(1);
+        if (existing) return { success: true, duplicate: true, attendanceId: existing.id };
+        const result = await db.insert(attendance).values({ sessionId: input.sessionId, studentId: input.studentId, status: input.status, source: "manual", recordedBy: ctx.user.id });
+        if (input.status === "present") {
+          const [student] = await db.select().from(students).where(eq(students.id, input.studentId)).limit(1);
+          if (student && student.remainingSessions > 0) await db.update(students).set({ remainingSessions: student.remainingSessions - 1 }).where(eq(students.id, input.studentId));
+        }
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "attendance", entityId: Number(result[0].insertId), action: "recorded:manual", metadata: JSON.stringify(input) });
+        return { success: true, duplicate: false, attendanceId: Number(result[0].insertId) };
+      }),
     recordByQrToken: staffProcedure
       .input(z.object({ sessionId: staffId, token: z.string().trim().min(12).max(200), status: z.enum(["present", "excused", "sick", "absent"]).default("present") }))
       .mutation(async ({ input, ctx }) => {

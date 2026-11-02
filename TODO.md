@@ -82,3 +82,12 @@
 - [x] Owner/Admin dapat memilih paket, jatuh tempo, diskon, biaya admin, dan pajak lalu membuat invoice otomatis untuk seluruh murid yang berstatus aktif dan memiliki `classStatus` aktif.
 - [x] Generate otomatis menampilkan jumlah kandidat kelas aktif, meminta konfirmasi sebelum membuat invoice, mencatat activity log, dan melewati invoice duplikat untuk murid/paket/tanggal jatuh tempo yang sama.
 - [x] Murid yang cuti/berhenti atau kelasnya tidak aktif tidak ikut generate otomatis.
+
+## Audit koneksi data operasional — iterasi berikutnya
+- [x] Halaman Murid membaca daftar, status murid, status kelas, program, wali, dan sisa sesi dari `students` melalui API.
+- [x] Halaman Jadwal membaca sesi mendatang dari `sessions` melalui API dan menampilkan waktu, durasi, program, guru, ruang, QR, serta status sesi.
+- [x] Halaman Absensi membaca murid aktif dan sesi dari API; perubahan status memanggil mutation manual server yang idempotent dan mengurangi saldo hanya untuk Hadir.
+- [x] Tabel Billing membaca invoice, murid, dan paket dari database; tombol PDF memakai nomor invoice, paket, total, status, dan jatuh tempo dari record invoice.
+- [ ] CRM/pendaftaran masih memerlukan tabel `leads`, trial, follow-up, dan workflow konversi ke murid.
+- [ ] Portal murid/orang tua masih preview; perlu autentikasi dan relasi guardian/enrollment agar data dibatasi pada keluarga yang login.
+- [ ] Finance dashboard dan payroll masih perlu mengganti angka demo dengan query accounting/payroll dan workflow periode payroll.
