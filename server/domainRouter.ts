@@ -307,14 +307,14 @@ export const domainRouter = router({
       return db.select({ id: students.id, studentNo: students.studentNo, fullName: students.fullName, program: students.program, remainingSessions: students.remainingSessions }).from(students).where(and(eq(students.status, "active"), eq(students.classStatus, "active"), isNull(students.deletedAt))).orderBy(students.fullName).limit(500);
     }),
     createInvoice: managerProcedure
-      .input(z.object({ studentId: staffId, subtotal: z.number().int().min(0), discount: z.number().int().min(0).default(0), adminFee: z.number().int().min(0).default(0), tax: z.number().int().min(0).default(0), dueDate: z.coerce.date() }))
+      .input(z.object({ studentId: staffId, packageId: staffId.nullish(), subtotal: z.number().int().min(0), discount: z.number().int().min(0).default(0), adminFee: z.number().int().min(0).default(0), tax: z.number().int().min(0).default(0), dueDate: z.coerce.date() }))
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw unavailable();
         if (input.discount > input.subtotal) throw new TRPCError({ code: "BAD_REQUEST", message: "Diskon tidak boleh melebihi subtotal." });
         const total = input.subtotal - input.discount + input.adminFee + input.tax;
         const invoiceNumber = `INV-KL-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(Date.now()).slice(-5)}`;
-        const result = await db.insert(invoices).values({ ...input, invoiceNumber, total, paidAmount: 0, status: "unpaid" });
+        const result = await db.insert(invoices).values({ ...input, packageId: input.packageId ?? null, invoiceNumber, total, paidAmount: 0, status: "unpaid" });
         await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "invoice", entityId: Number(result[0].insertId), action: "created", metadata: JSON.stringify({ invoiceNumber, total }) });
         return { id: Number(result[0].insertId), invoiceNumber, total };
       }),

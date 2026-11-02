@@ -838,3 +838,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .bulk-invoice-form input, .bulk-invoice-form select { min-height: 35px; padding: 0 10px; border: 1px solid #e5e8eb; border-radius: 9px; background: #fff; color: var(--ink); font-size: 11px; }
 .bulk-invoice-action { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 5px; color: #8b949f; font-size: 10px; }
 @media (max-width: 800px) { .bulk-invoice-panel { grid-template-columns: 1fr; } .bulk-invoice-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bulk-invoice-action { align-items: flex-start; flex-direction: column; } }
+
+.invoice-total-preview { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px; border-radius: 11px; background: #f6f8f9; color: #7f8a97; font-size: 10px; }
+.invoice-total-preview strong { color: var(--ink); font-size: 19px; }
+.invoice-total-preview small { color: #9aa3ad; }
+.invoice-modal-card { max-width: 680px; }
