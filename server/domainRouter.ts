@@ -358,10 +358,18 @@ export const domainRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw unavailable();
-        if (input.discount > input.subtotal) throw new TRPCError({ code: "BAD_REQUEST", message: "Diskon tidak boleh melebihi subtotal." });
-        const total = input.subtotal - input.discount + input.adminFee + input.tax;
+        const [student] = await db.select({ id: students.id, status: students.status, deletedAt: students.deletedAt }).from(students).where(eq(students.id, input.studentId)).limit(1);
+        if (!student || student.deletedAt || student.status !== "active") throw new TRPCError({ code: "BAD_REQUEST", message: "Invoice hanya dapat dibuat untuk murid aktif." });
+        let serverSubtotal = input.subtotal;
+        if (input.packageId) {
+          const [selectedPackage] = await db.select({ price: packages.price, isActive: packages.isActive }).from(packages).where(eq(packages.id, input.packageId)).limit(1);
+          if (!selectedPackage || selectedPackage.isActive !== 1) throw new TRPCError({ code: "NOT_FOUND", message: "Paket aktif tidak ditemukan." });
+          serverSubtotal = selectedPackage.price;
+        }
+        if (input.discount > serverSubtotal) throw new TRPCError({ code: "BAD_REQUEST", message: "Diskon tidak boleh melebihi subtotal." });
+        const total = serverSubtotal - input.discount + input.adminFee + input.tax;
         const invoiceNumber = `INV-KL-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(Date.now()).slice(-5)}`;
-        const result = await db.insert(invoices).values({ ...input, packageId: input.packageId ?? null, invoiceNumber, total, paidAmount: 0, status: "unpaid" });
+        const result = await db.insert(invoices).values({ studentId: input.studentId, packageId: input.packageId ?? null, subtotal: serverSubtotal, discount: input.discount, adminFee: input.adminFee, tax: input.tax, dueDate: input.dueDate, invoiceNumber, total, paidAmount: 0, status: "unpaid" });
         await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "invoice", entityId: Number(result[0].insertId), action: "created", metadata: JSON.stringify({ invoiceNumber, total }) });
         return { id: Number(result[0].insertId), invoiceNumber, total };
       }),

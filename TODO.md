@@ -82,6 +82,7 @@
 - [x] Owner/Admin dapat memilih paket, jatuh tempo, diskon, biaya admin, dan pajak lalu membuat invoice otomatis untuk seluruh murid yang berstatus aktif dan memiliki `classStatus` aktif.
 - [x] Generate otomatis menampilkan jumlah kandidat kelas aktif, meminta konfirmasi sebelum membuat invoice, mencatat activity log, dan melewati invoice duplikat untuk murid/paket/tanggal jatuh tempo yang sama.
 - [x] Murid yang cuti/berhenti atau kelasnya tidak aktif tidak ikut generate otomatis.
+- [x] Invoice manual memvalidasi murid aktif dan mengambil subtotal dari harga paket aktif di server; nilai subtotal yang dikirim browser tidak dapat mengubah harga paket.
 
 ## Audit koneksi data operasional — iterasi berikutnya
 - [x] Halaman Murid membaca daftar, status murid, status kelas, program, wali, dan sisa sesi dari `students` melalui API.
