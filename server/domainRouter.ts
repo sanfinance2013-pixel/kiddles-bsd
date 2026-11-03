@@ -9,6 +9,7 @@ import {
   invoices,
   journalEntries,
   journalLines,
+  leads,
   packages,
   paymentEvidence,
   procurements,
@@ -86,6 +87,47 @@ const taxDueDate = (period: string, taxType: string) => {
 };
 
 export const domainRouter = router({
+  crm: router({
+    list: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      return db.select().from(leads).where(isNull(leads.deletedAt)).orderBy(desc(leads.createdAt)).limit(500);
+    }),
+    create: managerProcedure
+      .input(z.object({ fullName: z.string().trim().min(2).max(160), guardianName: z.string().trim().min(2).max(160), guardianPhone: z.string().trim().max(32).optional(), program: z.string().trim().min(2).max(80), source: z.string().trim().max(80).default("Tidak diketahui"), trialAt: z.coerce.date().nullish(), followUpAt: z.coerce.date().nullish(), note: z.string().trim().max(500).optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const result = await db.insert(leads).values({ ...input, guardianPhone: input.guardianPhone || null, trialAt: input.trialAt ?? null, followUpAt: input.followUpAt ?? null, note: input.note || null });
+        const id = Number(result[0].insertId);
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "lead", entityId: id, action: "created" });
+        return { id };
+      }),
+    updateStatus: managerProcedure
+      .input(z.object({ leadId: staffId, status: z.enum(["new", "contacted", "trial_scheduled", "trial_done", "enrolled", "lost"]) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        await db.update(leads).set({ status: input.status }).where(and(eq(leads.id, input.leadId), isNull(leads.deletedAt)));
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "lead", entityId: input.leadId, action: `status:${input.status}` });
+        return { success: true };
+      }),
+    convertToStudent: managerProcedure
+      .input(z.object({ leadId: staffId, remainingSessions: z.number().int().min(0).max(999).default(0) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const [lead] = await db.select().from(leads).where(and(eq(leads.id, input.leadId), isNull(leads.deletedAt))).limit(1);
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead tidak ditemukan." });
+        if (lead.convertedStudentId) return { id: lead.convertedStudentId, duplicate: true };
+        const studentNo = `KBS-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+        const result = await db.insert(students).values({ studentNo, fullName: lead.fullName, guardianName: lead.guardianName, guardianPhone: lead.guardianPhone, program: lead.program, remainingSessions: input.remainingSessions, classStatus: "active" });
+        const studentId = Number(result[0].insertId);
+        await db.update(leads).set({ status: "enrolled", convertedStudentId: studentId }).where(eq(leads.id, lead.id));
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "lead", entityId: lead.id, action: "converted_to_student", metadata: JSON.stringify({ studentId }) });
+        return { id: studentId, duplicate: false };
+      }),
+  }),
   assistant: router({
     chat: protectedProcedure
       .input(z.object({

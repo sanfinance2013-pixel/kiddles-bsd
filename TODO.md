@@ -88,6 +88,6 @@
 - [x] Halaman Jadwal membaca sesi mendatang dari `sessions` melalui API dan menampilkan waktu, durasi, program, guru, ruang, QR, serta status sesi.
 - [x] Halaman Absensi membaca murid aktif dan sesi dari API; perubahan status memanggil mutation manual server yang idempotent dan mengurangi saldo hanya untuk Hadir.
 - [x] Tabel Billing membaca invoice, murid, dan paket dari database; tombol PDF memakai nomor invoice, paket, total, status, dan jatuh tempo dari record invoice.
-- [ ] CRM/pendaftaran masih memerlukan tabel `leads`, trial, follow-up, dan workflow konversi ke murid.
+- [x] CRM memiliki tabel `leads`, pipeline status Baru/Dihubungi/Trial dijadwalkan/Sudah trial/Daftar/Tidak jadi, trial/follow-up, sumber lead, activity log, pembuatan lead, perubahan status, dan konversi lead menjadi murid.
 - [ ] Portal murid/orang tua masih preview; perlu autentikasi dan relasi guardian/enrollment agar data dibatasi pada keluarga yang login.
 - [ ] Finance dashboard dan payroll masih perlu mengganti angka demo dengan query accounting/payroll dan workflow periode payroll.

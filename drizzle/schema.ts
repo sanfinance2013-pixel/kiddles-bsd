@@ -185,6 +185,26 @@ export const activityLogs = mysqlTable("activityLogs", {
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = typeof activityLogs.$inferInsert;
 
+export const leads = mysqlTable("leads", {
+  id: int("id").autoincrement().primaryKey(),
+  fullName: varchar("fullName", { length: 160 }).notNull(),
+  guardianName: varchar("guardianName", { length: 160 }).notNull(),
+  guardianPhone: varchar("guardianPhone", { length: 32 }),
+  program: varchar("program", { length: 80 }).notNull(),
+  source: varchar("source", { length: 80 }).default("Tidak diketahui").notNull(),
+  status: mysqlEnum("status", ["new", "contacted", "trial_scheduled", "trial_done", "enrolled", "lost"]).default("new").notNull(),
+  trialAt: timestamp("trialAt"),
+  followUpAt: timestamp("followUpAt"),
+  note: text("note"),
+  convertedStudentId: int("convertedStudentId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+});
+
+export type Lead = typeof leads.$inferSelect;
+export type InsertLead = typeof leads.$inferInsert;
+
 export const chartOfAccounts = mysqlTable("chartOfAccounts", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 20 }).notNull().unique(),
