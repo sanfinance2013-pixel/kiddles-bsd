@@ -92,3 +92,4 @@
 - [x] CRM memiliki tabel `leads`, pipeline status Baru/Dihubungi/Trial dijadwalkan/Sudah trial/Daftar/Tidak jadi, trial/follow-up, sumber lead, activity log, pembuatan lead, perubahan status, dan konversi lead menjadi murid.
 - [ ] Portal murid/orang tua masih preview; perlu autentikasi dan relasi guardian/enrollment agar data dibatasi pada keluarga yang login.
 - [ ] Finance dashboard dan payroll masih perlu mengganti angka demo dengan query accounting/payroll dan workflow periode payroll.
+- [x] Shell aplikasi tidak lagi menampilkan selector role yang dapat memalsukan Owner/Admin; user anonim diarahkan login Manus dan role menu ditentukan oleh role server.
