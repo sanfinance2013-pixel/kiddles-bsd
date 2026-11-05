@@ -850,3 +850,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .auth-gate-card h1 { margin: 8px 0 10px; color: var(--ink); font-size: 30px; }
 .auth-gate-card p { margin: 0 auto 22px; max-width: 420px; color: #748079; line-height: 1.65; }
 .auth-gate-card small { display: block; margin-top: 18px; color: #9aa59e; line-height: 1.5; }
+.auth-gate-card .form-grid { margin-top: 18px; text-align: left; }
+.auth-gate-card .form-grid .button { justify-content: center; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0 14px; color: #a0aaa4; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.auth-divider::before, .auth-divider::after { content: ""; height: 1px; flex: 1; background: #e7ece8; }
+.auth-error { margin: 0; color: #c33d61; font-size: 11px; }
+.settings-divider { height: 1px; margin: 24px 0; background: var(--line); }
