@@ -821,7 +821,7 @@ function LoginGate({ loading = false }: { loading?: boolean }) {
 }
 
 export default function Home() {
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   const [activePage, setActivePage] = useState<PageKey>(() => pageFromPath(location));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -847,7 +847,6 @@ export default function Home() {
   };
   const navigate = (page: PageKey) => {
     setActivePage(page);
-    setLocation(pathByPage[page]);
     setMobileOpen(false);
     setQuery("");
   };
