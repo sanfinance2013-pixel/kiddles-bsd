@@ -1010,8 +1010,10 @@ export default function Home() {
     notify("Data contoh sudah disembunyikan dari workspace ini.");
   };
 
-  if (authLoading) return <LoginGate loading />;
-  // No-login mode aktif: tidak memaksa LoginGate
+  // NO-LOGIN MODE: jangan tunggu auth & jangan tampilkan LoginGate
+  // (set ALLOW_NO_LOGIN=0 + kembalikan gate ini bila ingin login wajib lagi)
+  if (false && authLoading) return <LoginGate loading />;
+  if (false && !user) return <LoginGate />;
 
   return <div className={`app-shell ${activePage === "dashboard" ? "app-shell--home" : ""}`}>
     <main className="main-shell">
