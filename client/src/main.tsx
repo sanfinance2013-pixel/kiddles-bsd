@@ -18,7 +18,9 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
 
-  startLogin();
+  // NO-LOGIN MODE: jangan auto-redirect ke Manus login
+  // startLogin();
+  console.warn("[auth] unauthorized (ignored — no-login mode)", error.message);
 };
 
 queryClient.getQueryCache().subscribe(event => {
