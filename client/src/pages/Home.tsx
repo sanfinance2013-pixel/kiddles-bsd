@@ -976,13 +976,21 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const [demoVisible, setDemoVisible] = useState(true);
   const { user, loading: authLoading } = useAuth();
+  // Mode no-login: pakai user guest admin bila belum login
+  const effectiveUser = user ?? {
+    id: 0,
+    openId: "guest:no-login",
+    name: "Admin KIDDLES (No Login)",
+    email: "sanfinance2013@gmail.com",
+    role: "admin" as const,
+  };
 
   useEffect(() => {
     setActivePage(pageFromPath(location));
   }, [location]);
 
   const pageTitle = useMemo(() => navSections.flatMap((section) => section.items).find((item) => item.key === activePage)?.label ?? "Dashboard", [activePage]);
-  const role = user?.role === "admin" ? "Admin" : user?.role === "teacher" ? "Guru" : user?.role === "parent" ? "Murid/Orang Tua" : user?.role === "owner" ? "Owner" : "Murid/Orang Tua";
+  const role = effectiveUser.role === "admin" ? "Admin" : effectiveUser.role === "teacher" ? "Guru" : effectiveUser.role === "parent" ? "Murid/Orang Tua" : effectiveUser.role === "owner" ? "Owner" : "Murid/Orang Tua";
   const notify = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 3200);
@@ -1003,12 +1011,12 @@ export default function Home() {
   };
 
   if (authLoading) return <LoginGate loading />;
-  if (!user) return <LoginGate />;
+  // No-login mode aktif: tidak memaksa LoginGate
 
   return <div className={`app-shell ${activePage === "dashboard" ? "app-shell--home" : ""}`}>
     <main className="main-shell">
-      <header className="topbar"><div className="topbar-left"><button className="icon-button home-nav-button" onClick={() => navigate("dashboard")} aria-label="Kembali ke menu ikon"><House size={19} /></button><div className="breadcrumb"><span>KIDDLES BSD</span><ChevronRight size={14} /><strong>{pageTitle}</strong></div></div><div className="topbar-actions"><label className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari murid, invoice, lead..." /><kbd>⌘ K</kbd></label><button className="icon-button notification-button" onClick={() => notify("Tidak ada notifikasi baru.")} aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="role-select"><strong>{role}</strong><ChevronDown size={14} /></div><Avatar initials={(user.name ?? "KIDDLES").split(" ").map((part) => part[0]).join("").slice(0, 2)} tone="pink" /></div></header>
-      <div className="page-content"><div className="content-heading-mobile"><span className="eyebrow">Workspace KIDDLES BSD</span><h1>{pageTitle}</h1></div>{!demoVisible && <div className="demo-hidden-banner"><Sparkles size={16} /><span>Data contoh sedang disembunyikan. Anda dapat mengaktifkannya kembali di Pengaturan.</span><button onClick={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }}>Tampilkan kembali</button></div>}{!demoVisible && activePage !== "settings" ? <DemoEmptyState onRestore={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }} /> : <>{activePage === "dashboard" && <HomeIconBase role={role} userName={user.name ?? "Pengguna KIDDLES"} onNavigate={navigate} onNotify={notify} onRoleChange={() => notify("Role ditentukan oleh akun login dan tidak dapat diganti dari mode demo.")} />}{activePage === "tasks" && <TasksPage role={role} onNavigate={navigate} onNotify={notify} />} {activePage === "crm" && <CrmPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "schedule" && <SchedulePage onAction={openAction} />}{activePage === "attendance" && <AttendancePage onNotify={notify} />}{activePage === "scan" && <ScanQrPage onNotify={notify} />}{activePage === "students" && <StudentsPage onAction={openAction} query={query} />}{activePage === "billing" && <BillingPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "procurement" && <ProcurementPage onNotify={notify} />}{activePage === "finance" && <FinancePage onAction={openAction} onNotify={notify} />}{activePage === "reports" && <MonthlyReportsPage onNotify={notify} />}{activePage === "tax" && <TaxPage onNotify={notify} />}{activePage === "portal" && <PortalPage onNotify={notify} />}{activePage === "settings" && <SettingsPage onNotify={notify} onClearDemo={clearDemo} canManageAccounts={role === "Admin" || role === "Owner"} />}</>}</div>
+      <header className="topbar"><div className="topbar-left"><button className="icon-button home-nav-button" onClick={() => navigate("dashboard")} aria-label="Kembali ke menu ikon"><House size={19} /></button><div className="breadcrumb"><span>KIDDLES BSD</span><ChevronRight size={14} /><strong>{pageTitle}</strong></div></div><div className="topbar-actions"><label className="global-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari murid, invoice, lead..." /><kbd>⌘ K</kbd></label><button className="icon-button notification-button" onClick={() => notify("Tidak ada notifikasi baru.")} aria-label="Notifikasi"><Bell size={18} /><i /></button><div className="role-select"><strong>{role}</strong><ChevronDown size={14} /></div><Avatar initials={(effectiveUser.name ?? "KIDDLES").split(" ").map((part) => part[0]).join("").slice(0, 2)} tone="pink" /></div></header>
+      <div className="page-content"><div className="content-heading-mobile"><span className="eyebrow">Workspace KIDDLES BSD</span><h1>{pageTitle}</h1></div>{!demoVisible && <div className="demo-hidden-banner"><Sparkles size={16} /><span>Data contoh sedang disembunyikan. Anda dapat mengaktifkannya kembali di Pengaturan.</span><button onClick={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }}>Tampilkan kembali</button></div>}{!demoVisible && activePage !== "settings" ? <DemoEmptyState onRestore={() => { setDemoVisible(true); notify("Data contoh ditampilkan kembali."); }} /> : <>{activePage === "dashboard" && <HomeIconBase role={role} userName={effectiveUser.name ?? "Pengguna KIDDLES"} onNavigate={navigate} onNotify={notify} onRoleChange={() => notify("Role ditentukan oleh akun login dan tidak dapat diganti dari mode demo.")} />}{activePage === "tasks" && <TasksPage role={role} onNavigate={navigate} onNotify={notify} />} {activePage === "crm" && <CrmPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "schedule" && <SchedulePage onAction={openAction} />}{activePage === "attendance" && <AttendancePage onNotify={notify} />}{activePage === "scan" && <ScanQrPage onNotify={notify} />}{activePage === "students" && <StudentsPage onAction={openAction} query={query} />}{activePage === "billing" && <BillingPage onAction={openAction} onNotify={notify} query={query} />}{activePage === "procurement" && <ProcurementPage onNotify={notify} />}{activePage === "finance" && <FinancePage onAction={openAction} onNotify={notify} />}{activePage === "reports" && <MonthlyReportsPage onNotify={notify} />}{activePage === "tax" && <TaxPage onNotify={notify} />}{activePage === "portal" && <PortalPage onNotify={notify} />}{activePage === "settings" && <SettingsPage onNotify={notify} onClearDemo={clearDemo} canManageAccounts={role === "Admin" || role === "Owner"} />}</>}</div>
     </main>
     {toast && <div className="toast"><span className="toast-check"><Check size={14} /></span><span>{toast}</span><button onClick={() => setToast(null)} aria-label="Tutup pesan"><X size={15} /></button></div>}
     {modal === "lead" ? <LeadModal onClose={() => setModal(null)} onSaved={handleSave} /> : modal === "invoice" ? <InvoiceModal onClose={() => setModal(null)} onSaved={handleSave} /> : modal && <Modal kind={modal} onClose={() => setModal(null)} onSave={handleSave} />}
