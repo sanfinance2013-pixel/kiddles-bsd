@@ -19,10 +19,16 @@ export function AdminAssistant({ page, role }: AdminAssistantProps) {
   });
 
   const sendMessage = (content: string) => {
-    const nextMessages = [...messages, { role: "user" as const, content }];
+    const text = (content || "").trim();
+    if (!text) return;
+    const nextMessages = [...messages, { role: "user" as const, content: text }];
     setMessages(nextMessages);
-    const apiMessages = nextMessages.filter((message): message is { role: "user" | "assistant"; content: string } => message.role !== "system").slice(-12);
-    chat.mutate({ page, messages: apiMessages });
+    const apiMessages = nextMessages
+      .filter((message): message is { role: "user" | "assistant"; content: string } => message.role === "user" || message.role === "assistant")
+      .map((message) => ({ role: message.role, content: String(message.content || "").trim().slice(0, 4000) }))
+      .filter((message) => message.content.length > 0)
+      .slice(-12);
+    chat.mutate({ page: String(page || "Dashboard").slice(0, 120), messages: apiMessages });
   };
 
   return <>
