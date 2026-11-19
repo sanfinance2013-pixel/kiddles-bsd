@@ -80,9 +80,13 @@ export function downloadCsv(filename: string, rows: (string | number)[][]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
+  a.rel = "noopener";
+  // iPad Safari: append to DOM dulu agar download/share sheet muncul
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2500);
 }
 
 export function buildMonthlyAccountingRows(report: {
