@@ -39,13 +39,115 @@ ul.check { margin: 6px 0; padding-left: 18px; }
 @media print { .no-print { display: none !important; } }
 `;
 
+/** Deteksi iOS / iPadOS (termasuk iPad desktop-mode Safari). */
+function isIOSLike() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const iOS = /iPad|iPhone|iPod/.test(ua);
+  const iPadOS = navigator.platform === "MacIntel" && (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints! > 1;
+  return iOS || iPadOS;
+}
+
+function buildFullHtml(title: string, bodyHtml: string) {
+  const safeTitle = title.replace(/</g, "");
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${safeTitle}</title><style>${standardPrintCss}
+.no-print-bar { position: sticky; top: 0; z-index: 9; display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 12px; background: #f4f5f3; border-bottom: 1px solid #dfe2df; font-family: system-ui, sans-serif; }
+.no-print-bar button, .no-print-bar a { font-size: 14px; padding: 10px 14px; border-radius: 8px; border: 0; background: #17202b; color: #fff; text-decoration: none; cursor: pointer; }
+.no-print-bar .ghost { background: #fff; color: #17202b; border: 1px solid #c9cdc8; }
+</style></head><body>
+<div class="no-print no-print-bar">
+  <button type="button" onclick="window.print()">Cetak / Simpan PDF</button>
+  <span style="font-size:12px;color:#68717b;align-self:center">iPad: ketuk tombol lalu pilih <b>Save as PDF</b> / Print</span>
+</div>
+<main class="doc">${bodyHtml}</main>
+<script>
+window.onload = function () {
+  // Di desktop: auto print. Di iPad: biarkan user ketuk tombol (auto-print sering gagal).
+  var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (!ios) { try { window.focus(); window.print(); } catch (e) {} }
+};
+</script>
+</body></html>`;
+}
+
+/** Unduh file HTML laporan — paling andal di iPad (Files app → buka → Share → Print). */
+export function downloadReportHtml(filename: string, title: string, bodyHtml: string) {
+  const html = buildFullHtml(title, bodyHtml);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".html") ? filename : `${filename}.html`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return true;
+}
+
+/**
+ * Cetak dokumen standar.
+ * - Desktop: popup + auto print
+ * - iPad / popup diblokir: iframe print + unduh HTML sebagai cadangan
+ */
 export function openStandardPrint(title: string, bodyHtml: string): boolean {
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=760");
-  if (!printWindow) return false;
-  printWindow.document.write(
-    `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>${title.replace(/</g, "")}</title><style>${standardPrintCss}</style></head><body><main class="doc">${bodyHtml}</main><script>window.onload=function(){window.focus();window.print();};</script></body></html>`,
-  );
-  printWindow.document.close();
+  const html = buildFullHtml(title, bodyHtml);
+  const safeName = title.replace(/[^\w\u00C0-\u024f\s-]/gi, "").trim().replace(/\s+/g, "-").slice(0, 60) || "laporan-kiddles";
+
+  // 1) Coba tab/popup baru
+  let printWindow: Window | null = null;
+  try {
+    printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=760");
+  } catch {
+    printWindow = null;
+  }
+
+  if (printWindow) {
+    try {
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+      // iPad: juga unduh HTML supaya bisa dibuka offline / Share Sheet
+      if (isIOSLike()) {
+        downloadReportHtml(`${safeName}.html`, title, bodyHtml);
+      }
+      return true;
+    } catch {
+      try { printWindow.close(); } catch { /* ignore */ }
+    }
+  }
+
+  // 2) Fallback iframe (beberapa browser iOS mengizinkan print dari iframe)
+  try {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("title", title);
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch { /* ignore */ }
+        setTimeout(() => iframe.remove(), 5000);
+      }, 400);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 3) Selalu sediakan unduhan HTML di iPad / jika popup gagal
+  downloadReportHtml(`${safeName}.html`, title, bodyHtml);
   return true;
 }
 
