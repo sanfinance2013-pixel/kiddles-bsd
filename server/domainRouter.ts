@@ -131,26 +131,121 @@ export const domainRouter = router({
   assistant: router({
     chat: protectedProcedure
       .input(z.object({
-        page: z.string().trim().max(80).default("Dashboard"),
-        messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().trim().min(1).max(4000) })).min(1).max(12),
+        page: z.string().trim().max(120).optional(),
+        messages: z.array(z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string().max(4000),
+        })).min(1).max(12),
       }))
       .mutation(async ({ input, ctx }) => {
-        const response = await invokeLLM({
-          model: "gpt-5-mini",
-          maxTokens: 800,
-          messages: [
-            {
-              role: "system",
-              content: `Kamu adalah "Kak KIDDLES", customer support yang sabar untuk sistem operasional KIDDLES BSD. Kamu membantu pengguna dengan role ${ctx.user.role} di halaman ${input.page}. Gunakan bahasa Indonesia yang sopan, hangat, sabar, dan sangat mudah dimengerti. Jawaban singkat namun jelas, gunakan poin atau langkah bernomor bila membantu. Jelaskan istilah teknis dengan bahasa biasa. Sesuaikan jawaban: Owner membutuhkan ringkasan bisnis dan kontrol; Admin membutuhkan langkah operasional; Guru membutuhkan jadwal, absensi, dan kelas; Murid/Orang Tua membutuhkan jadwal, sisa sesi, invoice, dan pembayaran. Untuk akuntansi, jelaskan alur: procurement dicatat dengan pemasok, kategori, akun debit, metode pembayaran, subtotal dan pajak; setelah disimpan sistem mem-posting jurnal berpasangan debit-kredit, lalu saldo masuk buku besar dan laporan bulanan. Untuk laporan, arahkan ke menu Laporan bulanan, pilih periode, periksa jurnal berstatus posted, lalu pilih Simpan PDF; dokumen tersebut adalah laporan internal siap cetak, bukan SPT atau opini akuntan. Bedakan data live dari data contoh: jangan menyebut angka payroll, pengeluaran, omzet, atau laporan sebagai angka nyata jika belum berasal dari query database. Jangan mengarang angka, data murid, status pembayaran, aturan pajak, atau jadwal yang tidak diberikan. Jika pertanyaan memerlukan akses data langsung atau tindakan yang belum tersedia, katakan dengan jujur dan arahkan menu yang tepat. Jangan meminta password, token, nomor kartu, atau data sensitif. Untuk pembayaran, absensi, procurement, akuntansi, pajak, atau data murid, ingatkan pengguna untuk memeriksa detail sebelum menyimpan perubahan. Jangan mengaku sebagai manusia atau menjanjikan tindakan otomatis yang belum dilakukan.`,
-            },
-            ...input.messages.map((message) => ({ role: message.role, content: message.content })),
-          ],
-        });
-        const content = response.choices[0]?.message?.content;
-        if (!content || typeof content !== "string") throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Asisten belum memberikan jawaban. Silakan coba lagi." });
-        return { content };
+        const page = (input.page || "Dashboard").slice(0, 120);
+        const role = ctx.user?.role ?? "user";
+        // Bersihkan pesan: trim, buang kosong, batasi panjang
+        const cleaned = input.messages
+          .map((m) => ({ role: m.role, content: (m.content || "").trim().slice(0, 4000) }))
+          .filter((m) => m.content.length > 0)
+          .slice(-12);
+        if (cleaned.length === 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Pesan kosong. Ketik pertanyaan Anda." });
+        }
+        const lastUser = [...cleaned].reverse().find((m) => m.role === "user")?.content ?? "";
+
+        const systemPrompt =
+          `Kamu adalah "Kak KIDDLES", customer support sabar untuk sistem operasional KIDDLES BSD. ` +
+          `Bantu pengguna role ${role} di halaman ${page}. Bahasa Indonesia, sopan, singkat, jelas. ` +
+          `Sesuaikan: admin/owner=operasional & laporan; teacher=jadwal & absensi; parent=sesi, invoice, bayar. ` +
+          `Jangan mengarang angka/data murid/status bayar. Arahkan ke menu yang tepat. ` +
+          `Jangan minta password, token, atau data sensitif. Jangan mengaku manusia.`;
+
+        // Jawaban cadangan lokal (jika LLM/API gagal atau model ditolak)
+        const fallbackReply = (q: string) => {
+          const t = q.toLowerCase();
+          if (/scan|qr|absen/.test(t)) {
+            return (
+              "Untuk absensi QR:\n" +
+              "1. Admin/guru buka menu **Scan QR**.\n" +
+              "2. Pastikan sesi kelas sudah aktif (QR status aktif & dalam jam kelas).\n" +
+              "3. Nyalakan kamera atau ketik kode manual.\n" +
+              "4. Satu murid hanya tercatat sekali per sesi.\n\n" +
+              "Jika gagal: cek izin kamera, sesi belum dibuka, atau token QR belum di-issue untuk murid."
+            );
+          }
+          if (/verifikasi|bukti|pembayaran|bayar/.test(t)) {
+            return (
+              "Verifikasi pembayaran:\n" +
+              "1. Buka **Billing / Invoice**.\n" +
+              "2. Di bagian bukti pembayaran, tinjau unggahan murid/ortu.\n" +
+              "3. **Setujui** jika nominal cocok, atau **Tolak** dengan catatan.\n" +
+              "4. Setelah disetujui, status invoice dapat berubah sesuai pelunasan.\n\n" +
+              "Periksa nominal dan nama rekening sebelum menyetujui."
+            );
+          }
+          if (/laporan|pdf|excel|unduh|export/.test(t)) {
+            return (
+              "Laporan bulanan:\n" +
+              "1. Buka menu **Laporan bulanan**.\n" +
+              "2. Pilih periode.\n" +
+              "3. Unduh PDF per jenis (keuangan, pajak, invoice, murid) atau **Unduh semua**.\n" +
+              "4. Slip gaji / BPJS / PPh 21 (format standar) juga ada di kartu laporan.\n" +
+              "5. **Export Excel** mengunduh CSV untuk dibuka di Excel/Numbers.\n\n" +
+              "Di iPad: izinkan unduhan; bila popup diblokir, file HTML/CSV tetap diunduh ke Files."
+            );
+          }
+          if (/invoice|tagihan/.test(t)) {
+            return (
+              "Invoice:\n" +
+              "1. Menu **Billing** → buat invoice manual atau bulk untuk kelas aktif.\n" +
+              "2. Isi paket, jatuh tempo, diskon/admin/pajak bila perlu.\n" +
+              "3. Murid/ortu dapat melihat tagihan di portal (sesuai role).\n" +
+              "4. Cetak invoice lewat tombol unduh/print pada daftar tagihan."
+            );
+          }
+          if (/password|token|login|rahasia/.test(t)) {
+            return (
+              "Saya tidak meminta atau menyimpan password, token, atau data sensitif. " +
+              "Kelola akun di **Pengaturan** (admin). Untuk mode tanpa login, itu pengaturan server sementara."
+            );
+          }
+          return (
+            `Saya siap membantu sebagai Kak KIDDLES di halaman **${page}** (role: ${role}).\n\n` +
+            "Anda bisa bertanya misalnya:\n" +
+            "• Cara scan absensi QR\n" +
+            "• Cara verifikasi bukti pembayaran\n" +
+            "• Cara unduh laporan PDF / Excel\n" +
+            "• Cara buat invoice\n\n" +
+            "Saya tidak bisa membaca angka live dari database di chat ini — buka menu terkait untuk data aktual. " +
+            "(Layanan AI eksternal sedang tidak merespons; jawaban ini dari panduan internal.)"
+          );
+        };
+
+        try {
+          const response = await invokeLLM({
+            // Jangan hardcode model yang ditolak platform (error "pattern")
+            maxTokens: 800,
+            messages: [
+              { role: "system", content: systemPrompt },
+              ...cleaned.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+            ],
+          });
+          const raw = response.choices?.[0]?.message?.content;
+          let content = "";
+          if (typeof raw === "string") content = raw.trim();
+          else if (Array.isArray(raw)) {
+            content = raw
+              .map((part) => (typeof part === "object" && part && "text" in part ? String((part as { text?: string }).text || "") : ""))
+              .join("\n")
+              .trim();
+          }
+          if (!content) content = fallbackReply(lastUser);
+          return { content };
+        } catch (error) {
+          console.error("[assistant.chat] LLM failed", error);
+          // Jangan teruskan pesan teknis Zod/API ke user
+          return { content: fallbackReply(lastUser) };
+        }
       }),
   }),
+
 
   accounting: router({
     listAccounts: managerProcedure.query(async () => {
