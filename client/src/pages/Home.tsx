@@ -7,7 +7,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { AdminAssistant } from "@/components/AdminAssistant";
 import { PaymentEvidenceReview } from "@/components/PaymentEvidenceReview";
 import { exportMonthlyAccountingPack } from "@/lib/exportAccountingExcel";
-import { printStandardSlip, printStandardBpjs, printStandardPph21, printStandardInvoice } from "@/lib/printStandardReports";
+import { openStandardPrint, printStandardSlip, printStandardBpjs, printStandardPph21, printStandardInvoice } from "@/lib/printStandardReports";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -184,14 +184,9 @@ const shortMoney = (value: number) => {
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 
 function openPrintDocument(title: string, content: string) {
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=760");
-  if (!printWindow) return false;
-  printWindow.document.write(`<!doctype html><html lang="id"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
-    @page { size: A4; margin: 18mm; } * { box-sizing: border-box; } body { font-family: Arial, sans-serif; color: #17202b; margin: 0; line-height: 1.45; } .doc { max-width: 760px; margin: auto; } .head { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; border-bottom: 3px solid #17202b; padding-bottom: 18px; } .brand { font-size: 24px; font-weight: 800; letter-spacing: -.04em; } .muted { color: #68717b; font-size: 12px; } h1 { font-size: 25px; margin: 26px 0 4px; } h2 { font-size: 15px; margin: 26px 0 9px; } .meta { text-align: right; font-size: 12px; } .box { background: #f4f5f3; padding: 14px 16px; border-radius: 10px; margin-top: 20px; } table { width: 100%; border-collapse: collapse; font-size: 13px; } th, td { text-align: left; padding: 10px 0; border-bottom: 1px solid #dfe2df; } th:last-child, td:last-child { text-align: right; } .total td { border-bottom: 0; font-size: 16px; font-weight: 800; padding-top: 16px; } .footer { margin-top: 42px; border-top: 1px solid #dfe2df; padding-top: 14px; font-size: 11px; color: #68717b; } .signature { display: flex; justify-content: space-between; margin-top: 52px; text-align: center; font-size: 12px; } .signature span { display: block; border-top: 1px solid #17202b; padding-top: 7px; min-width: 180px; } @media print { .no-print { display: none; } }
-  </style></head><body><main class="doc">${content}</main><script>window.onload=function(){window.focus();window.print();};</script></body></html>`);
-  printWindow.document.close();
-  return true;
+  return openStandardPrint(title, content);
 }
+
 
 function printInvoice(invoice: (typeof invoices)[number]) {
   const printed = printStandardInvoice(money, escapeHtml, {
