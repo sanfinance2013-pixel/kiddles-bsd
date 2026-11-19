@@ -7,6 +7,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { AdminAssistant } from "@/components/AdminAssistant";
 import { PaymentEvidenceReview } from "@/components/PaymentEvidenceReview";
 import { exportMonthlyAccountingPack } from "@/lib/exportAccountingExcel";
+import { printStandardSlip, printStandardBpjs, printStandardPph21, printStandardInvoice } from "@/lib/printStandardReports";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -193,14 +194,42 @@ function openPrintDocument(title: string, content: string) {
 }
 
 function printInvoice(invoice: (typeof invoices)[number]) {
-  const printed = openPrintDocument(`Invoice ${invoice.id}`, `<div class="head"><div><div class="brand">KIDDLES BSD</div><div class="muted">Kids Learning Chinese · Fun learning, clear operations</div><div class="muted">West Village Business Park 2, D-8 · Kabupaten Tangerang</div></div><div class="meta"><strong>INVOICE</strong><br>${escapeHtml(invoice.id)}<br>${escapeHtml(invoice.due)}</div></div><h1>Tagihan Program Belajar</h1><div class="box"><strong>Ditagihkan kepada</strong><br>${escapeHtml(invoice.student)}<br><span class="muted">Program ${escapeHtml(invoice.package)} · Cabang KIDDLES BSD</span></div><h2>Rincian pembayaran</h2><table><thead><tr><th>Deskripsi</th><th>Nominal</th></tr></thead><tbody><tr><td>${escapeHtml(invoice.package)}</td><td>${money(invoice.amount)}</td></tr><tr><td>Biaya administrasi</td><td>${money(0)}</td></tr><tr><td>Pajak</td><td>${money(0)}</td></tr><tr class="total"><td>Total tagihan</td><td>${money(invoice.amount)}</td></tr></tbody></table><div class="box"><strong>Status: ${escapeHtml(invoice.status)}</strong><br><span class="muted">Jatuh tempo: ${escapeHtml(invoice.due)} · Pembayaran dapat dikonfirmasi melalui admin KIDDLES BSD.</span></div><div class="footer">Dokumen ini diterbitkan oleh KIDDLES BSD dan dapat digunakan sebagai bukti tagihan. Simpan sebagai PDF melalui dialog Print browser.</div>`);
-  return printed;
+  const printed = printStandardInvoice(money, escapeHtml, {
+    id: String(invoice.id),
+    student: invoice.student,
+    packageName: invoice.package,
+    amount: invoice.amount,
+    due: invoice.due,
+    status: invoice.status,
+  });
+  if (!printed) return;
 }
 
+
 function printPayroll(name: string, period: string, gross: number, tax: number, deductions: number) {
-  const net = gross - tax - deductions;
-  return openPrintDocument(`Slip Payroll ${name}`, `<div class="head"><div><div class="brand">KIDDLES BSD</div><div class="muted">Teacher payroll statement</div><div class="muted">West Village Business Park 2, D-8 · Kabupaten Tangerang</div></div><div class="meta"><strong>SLIP HONOR</strong><br>Periode ${escapeHtml(period)}</div></div><h1>Slip Honor Guru</h1><div class="box"><strong>${escapeHtml(name)}</strong><br><span class="muted">Pengajar KIDDLES BSD · Status: Menunggu ditinjau</span></div><h2>Rincian honor</h2><table><tbody><tr><td>Honor kotor</td><td>${money(gross)}</td></tr><tr><td>Pajak / potongan pajak</td><td>-${money(tax)}</td></tr><tr><td>Potongan lain</td><td>-${money(deductions)}</td></tr><tr class="total"><td>Honor bersih</td><td>${money(net)}</td></tr></tbody></table><div class="signature"><span>Disiapkan Admin</span><span>Disetujui Owner</span></div><div class="footer">Dokumen payroll internal KIDDLES BSD. Simpan sebagai PDF melalui dialog Print browser.</div>`);
+  // Template standar (BPJS + PPh 21 TER). Parameter gross/tax/deductions di-map ke dummy layout;
+  // honor memakai gross agar tetap bisa dipanggil dari UI lama.
+  const honor = gross > 0 ? Math.max(0, gross - 500000) : 9000000;
+  const tunjangan = gross > 0 ? Math.min(500000, gross) : 500000;
+  const ok = printStandardSlip(money, escapeHtml, {
+    name: name || "Kak Sari Wijaya",
+    period: period || "November 2026",
+    honor: honor || 9000000,
+    tunjangan: gross > 0 ? 500000 : 500000,
+    sessionsNote: gross > 0 ? `Honor bruto ${money(gross)} (data UI)` : "36 sesi × Rp 250.000",
+    terRate: gross > 0 && tax > 0 ? Math.min(0.05, tax / Math.max(gross, 1)) : 0.015,
+  });
+  return ok;
 }
+
+function printDummyBpjsReport(period = "November 2026") {
+  return printStandardBpjs(money, escapeHtml, period);
+}
+
+function printDummyPph21Report(period = "November 2026") {
+  return printStandardPph21(money, escapeHtml, period);
+}
+
 
 const pathByPage: Record<PageKey, string> = {
   dashboard: "/",
@@ -783,10 +812,19 @@ function MonthlyReportsPage({ onNotify }: { onNotify: (message: string) => void 
 
   const downloadAll = () => {
     printFinance();
-    window.setTimeout(() => printTax(), 400);
-    window.setTimeout(() => printBilling(), 800);
-    window.setTimeout(() => printStudents(), 1200);
-    onNotify("Membuka 4 laporan PDF. Izinkan popup browser jika diminta.");
+    window.setTimeout(() => printTax(), 350);
+    window.setTimeout(() => printBilling(), 700);
+    window.setTimeout(() => printStudents(), 1050);
+    window.setTimeout(() => {
+      if (!printDummyBpjsReport(periodLabel)) onNotify("Popup BPJS diblokir.");
+    }, 1400);
+    window.setTimeout(() => {
+      if (!printDummyPph21Report(periodLabel)) onNotify("Popup PPh 21 diblokir.");
+    }, 1750);
+    window.setTimeout(() => {
+      printPayroll("Kak Sari Wijaya", periodLabel, 9500000, 142500, 380000);
+    }, 2100);
+    onNotify("Membuka laporan PDF (termasuk slip/BPJS/PPh dummy standar). Izinkan popup browser.");
   };
 
   const exportExcelPack = () => {
@@ -826,6 +864,9 @@ function MonthlyReportsPage({ onNotify }: { onNotify: (message: string) => void 
     { key: "tax", title: "Laporan pajak masa", detail: "Rekap PPh/PPN tercatat per jenis untuk rekonsiliasi DJP", action: printTax, tone: "orange" as Tone, meta: taxReport ? money(taxReport.totalTax) : "—" },
     { key: "billing", title: "Laporan invoice & penagihan", detail: "Tagihan jatuh tempo, pelunasan, dan outstanding periode", action: printBilling, tone: "blue" as Tone, meta: money(invoiceTotal) },
     { key: "students", title: "Laporan murid & sisa sesi", detail: "Snapshot murid aktif dan paket hampir habis", action: printStudents, tone: "pink" as Tone, meta: `${students.length} murid` },
+    { key: "slip", title: "Slip gaji standar (dummy)", detail: "Layout PP 36/2021 + BPJS + PPh 21 TER — data contoh Kak Sari", action: () => { if (!printPayroll("Kak Sari Wijaya", periodLabel, 9500000, 142500, 380000)) onNotify("Popup diblokir."); else onNotify("Slip gaji standar dibuka."); }, tone: "lime" as Tone, meta: "Dummy" },
+    { key: "bpjs", title: "Laporan BPJS standar (dummy)", detail: "Rekonsiliasi iuran ER/EE + checklist setor", action: () => { if (!printDummyBpjsReport(periodLabel)) onNotify("Popup diblokir."); else onNotify("Laporan BPJS dibuka."); }, tone: "blue" as Tone, meta: "Dummy" },
+    { key: "pph21std", title: "Rekap PPh 21 TER (dummy)", detail: "Rekap masa pajak metode TER — bukan e-Bupot", action: () => { if (!printDummyPph21Report(periodLabel)) onNotify("Popup diblokir."); else onNotify("Rekap PPh 21 dibuka."); }, tone: "orange" as Tone, meta: "Dummy" },
   ];
 
   return (
