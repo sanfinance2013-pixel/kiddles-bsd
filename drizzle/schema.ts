@@ -332,3 +332,42 @@ export const taxReports = mysqlTable("taxReports", {
 
 export type TaxReport = typeof taxReports.$inferSelect;
 export type InsertTaxReport = typeof taxReports.$inferInsert;
+
+
+/** Titik kantor untuk geofence absensi karyawan */
+export const officeLocations = mysqlTable("officeLocations", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  address: text("address"),
+  latitude: varchar("latitude", { length: 24 }).notNull(),
+  longitude: varchar("longitude", { length: 24 }).notNull(),
+  radiusMeters: int("radiusMeters").default(120).notNull(),
+  isActive: mysqlEnum("isActive", ["yes", "no"]).default("yes").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type OfficeLocation = typeof officeLocations.$inferSelect;
+export type InsertOfficeLocation = typeof officeLocations.$inferInsert;
+
+/** Absensi karyawan/admin (bukan murid) — check-in/out + GPS + selfie */
+export const staffAttendance = mysqlTable("staffAttendance", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  type: mysqlEnum("type", ["check_in", "check_out"]).notNull(),
+  status: mysqlEnum("status", ["ok", "out_of_range", "low_accuracy", "pending_review"]).default("ok").notNull(),
+  latitude: varchar("latitude", { length: 24 }).notNull(),
+  longitude: varchar("longitude", { length: 24 }).notNull(),
+  accuracyMeters: int("accuracyMeters"),
+  distanceMeters: int("distanceMeters"),
+  officeLocationId: int("officeLocationId"),
+  photoObjectKey: varchar("photoObjectKey", { length: 255 }),
+  photoUrl: varchar("photoUrl", { length: 512 }),
+  note: text("note"),
+  userAgent: varchar("userAgent", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+});
+
+export type StaffAttendance = typeof staffAttendance.$inferSelect;
+export type InsertStaffAttendance = typeof staffAttendance.$inferInsert;
