@@ -20,6 +20,8 @@ import {
   taxReports,
   taxTransactions,
   teacherPayouts,
+  officeLocations,
+  staffAttendance,
 } from "../drizzle/schema";
 import { managerProcedure, protectedProcedure, router, staffProcedure } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
@@ -28,6 +30,27 @@ import { storagePut } from "./storage";
 
 const unavailable = () => new TRPCError({ code: "PRECONDITION_FAILED", message: "Database belum tersedia pada environment ini." });
 const staffId = z.number().int().positive();
+
+/** Jarak haversine dalam meter */
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/** Default kantor KIDDLES BSD (West Village) — diganti via officeLocations */
+const DEFAULT_OFFICE = {
+  name: "KIDDLES BSD — West Village",
+  address: "West Village Business Park 2, D-8, Kabupaten Tangerang",
+  latitude: "-6.3018",
+  longitude: "106.6537",
+  radiusMeters: 120,
+};
 const hashQrToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const newQrToken = () => `KBSQR.${randomBytes(24).toString("base64url")}`;
 const isWithinSessionWindow = (session: { startsAt: Date; endsAt: Date }, now = new Date()) => now >= session.startsAt && now <= session.endsAt;
@@ -640,5 +663,201 @@ export const domainRouter = router({
       if (!db) return [];
       return db.select().from(teacherPayouts).where(isNull(teacherPayouts.deletedAt)).orderBy(desc(teacherPayouts.createdAt)).limit(100);
     }),
+  }),
+
+  /** Absensi karyawan/admin: geofence + selfie (MVP, tanpa suara) */
+  staffAttendance: router({
+    office: staffProcedure.query(async () => {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(officeLocations).where(eq(officeLocations.isActive, "yes")).orderBy(desc(officeLocations.updatedAt)).limit(5);
+        if (rows[0]) {
+          return {
+            id: rows[0].id,
+            name: rows[0].name,
+            address: rows[0].address,
+            latitude: Number(rows[0].latitude),
+            longitude: Number(rows[0].longitude),
+            radiusMeters: rows[0].radiusMeters,
+            source: "db" as const,
+          };
+        }
+      }
+      return {
+        id: 0,
+        name: DEFAULT_OFFICE.name,
+        address: DEFAULT_OFFICE.address,
+        latitude: Number(DEFAULT_OFFICE.latitude),
+        longitude: Number(DEFAULT_OFFICE.longitude),
+        radiusMeters: DEFAULT_OFFICE.radiusMeters,
+        source: "default" as const,
+      };
+    }),
+
+    saveOffice: managerProcedure
+      .input(z.object({
+        name: z.string().trim().min(2).max(120),
+        address: z.string().trim().max(300).optional(),
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+        radiusMeters: z.number().int().min(30).max(2000).default(120),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const existing = await db.select().from(officeLocations).where(eq(officeLocations.isActive, "yes")).limit(1);
+        if (existing[0]) {
+          await db.update(officeLocations).set({
+            name: input.name,
+            address: input.address || null,
+            latitude: String(input.latitude),
+            longitude: String(input.longitude),
+            radiusMeters: input.radiusMeters,
+          }).where(eq(officeLocations.id, existing[0].id));
+          return { id: existing[0].id };
+        }
+        const result = await db.insert(officeLocations).values({
+          name: input.name,
+          address: input.address || null,
+          latitude: String(input.latitude),
+          longitude: String(input.longitude),
+          radiusMeters: input.radiusMeters,
+          isActive: "yes",
+        });
+        return { id: Number(result[0].insertId) };
+      }),
+
+    todayMine: staffProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const rows = await db.select().from(staffAttendance)
+        .where(and(eq(staffAttendance.userId, ctx.user.id), isNull(staffAttendance.deletedAt)))
+        .orderBy(desc(staffAttendance.createdAt))
+        .limit(50);
+      return rows.filter((r) => r.createdAt >= start);
+    }),
+
+    listToday: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const rows = await db.select().from(staffAttendance)
+        .where(isNull(staffAttendance.deletedAt))
+        .orderBy(desc(staffAttendance.createdAt))
+        .limit(200);
+      return rows.filter((r) => r.createdAt >= start);
+    }),
+
+    checkIn: staffProcedure
+      .input(z.object({
+        type: z.enum(["check_in", "check_out"]),
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+        accuracyMeters: z.number().min(0).max(5000).optional(),
+        photoBase64: z.string().min(100).max(8_000_000),
+        note: z.string().trim().max(300).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+
+        // Resolve office
+        let officeId: number | null = null;
+        let officeLat = Number(DEFAULT_OFFICE.latitude);
+        let officeLng = Number(DEFAULT_OFFICE.longitude);
+        let radius = DEFAULT_OFFICE.radiusMeters;
+        const offices = await db.select().from(officeLocations).where(eq(officeLocations.isActive, "yes")).limit(1);
+        if (offices[0]) {
+          officeId = offices[0].id;
+          officeLat = Number(offices[0].latitude);
+          officeLng = Number(offices[0].longitude);
+          radius = offices[0].radiusMeters;
+        }
+
+        const distance = Math.round(haversineMeters(input.latitude, input.longitude, officeLat, officeLng));
+        const accuracy = input.accuracyMeters != null ? Math.round(input.accuracyMeters) : null;
+
+        let status: "ok" | "out_of_range" | "low_accuracy" | "pending_review" = "ok";
+        if (distance > radius) status = "out_of_range";
+        else if (accuracy != null && accuracy > 80) status = "low_accuracy";
+
+        // Upload selfie
+        const raw = input.photoBase64.replace(/^data:image\/\w+;base64,/, "");
+        const bytes = Buffer.from(raw, "base64");
+        if (bytes.length < 500) throw new TRPCError({ code: "BAD_REQUEST", message: "Foto selfie tidak valid." });
+        if (bytes.length > 6_000_000) throw new TRPCError({ code: "BAD_REQUEST", message: "Foto terlalu besar (maks ~4MB)." });
+        const stored = await storagePut(
+          `kiddles/staff-attendance/${ctx.user.id}-${Date.now()}.jpg`,
+          bytes,
+          "image/jpeg",
+        );
+        const photoUrl = `/manus-storage/${stored.key}`;
+
+        if (status === "out_of_range") {
+          // Masih simpan untuk audit, tapi tandai gagal
+          const result = await db.insert(staffAttendance).values({
+            userId: ctx.user.id,
+            type: input.type,
+            status,
+            latitude: String(input.latitude),
+            longitude: String(input.longitude),
+            accuracyMeters: accuracy,
+            distanceMeters: distance,
+            officeLocationId: officeId,
+            photoObjectKey: stored.key,
+            photoUrl,
+            note: input.note || null,
+            userAgent: null,
+          });
+          await db.insert(activityLogs).values({
+            actorUserId: ctx.user.id,
+            entityType: "staff_attendance",
+            entityId: Number(result[0].insertId),
+            action: `${input.type}:out_of_range`,
+            metadata: JSON.stringify({ distance, radius }),
+          });
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Anda di luar area kantor (±${radius} m). Jarak saat ini ~${distance} m. Absensi ditolak tetapi dicatat untuk audit.`,
+          });
+        }
+
+        const result = await db.insert(staffAttendance).values({
+          userId: ctx.user.id,
+          type: input.type,
+          status,
+          latitude: String(input.latitude),
+          longitude: String(input.longitude),
+          accuracyMeters: accuracy,
+          distanceMeters: distance,
+          officeLocationId: officeId,
+          photoObjectKey: stored.key,
+          photoUrl,
+          note: input.note || null,
+          userAgent: null,
+        });
+        const id = Number(result[0].insertId);
+        await db.insert(activityLogs).values({
+          actorUserId: ctx.user.id,
+          entityType: "staff_attendance",
+          entityId: id,
+          action: `${input.type}:${status}`,
+          metadata: JSON.stringify({ distance, accuracy }),
+        });
+        return {
+          id,
+          status,
+          distanceMeters: distance,
+          accuracyMeters: accuracy,
+          photoUrl,
+          message:
+            status === "low_accuracy"
+              ? `Berhasil dengan peringatan: akurasi GPS rendah (${accuracy} m). Status: perlu perhatian.`
+              : `Berhasil ${input.type === "check_in" ? "check-in" : "check-out"}. Jarak ke kantor ~${distance} m.`,
+        };
+      }),
   }),
 });
