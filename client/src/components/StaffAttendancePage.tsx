@@ -140,7 +140,7 @@ export function StaffAttendancePage({ onNotify }: Props) {
       address: office?.address || undefined,
       latitude: coords.lat,
       longitude: coords.lng,
-      radiusMeters: office?.radiusMeters || 120,
+      radiusMeters: 1,
     });
   };
 
@@ -171,8 +171,7 @@ export function StaffAttendancePage({ onNotify }: Props) {
             <span className="eyebrow">Staf · Geofence + Selfie</span>
             <h3>Absensi Karyawan / Admin</h3>
             <p>
-              Check-in/out hanya di area kantor. Sistem memverifikasi GPS dan menyimpan foto selfie. (MVP — tanpa
-              verifikasi suara.)
+              Check-in/out hanya di titik kantor dengan toleransi 1 meter. Admin menetapkan titik lokasi. Sistem memverifikasi GPS + selfie. Catatan: akurasi GPS ponsel sering 5–20 m, sehingga di dalam ruangan bisa sering ditolak — ambil titik di area terbuka.
             </p>
           </div>
         </div>
@@ -186,8 +185,7 @@ export function StaffAttendancePage({ onNotify }: Props) {
             {office ? (
               <>
                 <br />
-                Titik: {office.latitude.toFixed(5)}, {office.longitude.toFixed(5)} · Radius {office.radiusMeters} m ·
-                sumber {office.source}
+                Titik: {office.latitude.toFixed(5)}, {office.longitude.toFixed(5)} · Toleransi tetap <strong>1 m</strong> · sumber {office.source}
               </>
             ) : null}
           </p>
@@ -196,7 +194,7 @@ export function StaffAttendancePage({ onNotify }: Props) {
               Perbarui lokasi saya
             </button>
             <button type="button" className="button button--soft" onClick={useCurrentAsOffice} disabled={!coords || saveOffice.isPending}>
-              Set titik kantor = lokasi saya sekarang (admin)
+              Set titik kantor di sini (toleransi 1 m)
             </button>
           </div>
           {geoError && <p style={{ color: "#9B3A5A", marginTop: 8 }}>{geoError}</p>}
