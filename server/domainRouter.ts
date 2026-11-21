@@ -49,7 +49,7 @@ const DEFAULT_OFFICE = {
   address: "West Village Business Park 2, D-8, Kabupaten Tangerang",
   latitude: "-6.3018",
   longitude: "106.6537",
-  radiusMeters: 120,
+  radiusMeters: 1,
 };
 const hashQrToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const newQrToken = () => `KBSQR.${randomBytes(24).toString("base64url")}`;
@@ -700,11 +700,13 @@ export const domainRouter = router({
         address: z.string().trim().max(300).optional(),
         latitude: z.number().min(-90).max(90),
         longitude: z.number().min(-180).max(180),
-        radiusMeters: z.number().int().min(30).max(2000).default(120),
+        // Toleransi tetap 1 meter — admin hanya menentukan titik lokasi
+        radiusMeters: z.number().int().min(1).max(1).default(1).optional(),
       }))
       .mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw unavailable();
+        const radiusMeters = 1;
         const existing = await db.select().from(officeLocations).where(eq(officeLocations.isActive, "yes")).limit(1);
         if (existing[0]) {
           await db.update(officeLocations).set({
@@ -712,19 +714,19 @@ export const domainRouter = router({
             address: input.address || null,
             latitude: String(input.latitude),
             longitude: String(input.longitude),
-            radiusMeters: input.radiusMeters,
+            radiusMeters,
           }).where(eq(officeLocations.id, existing[0].id));
-          return { id: existing[0].id };
+          return { id: existing[0].id, radiusMeters };
         }
         const result = await db.insert(officeLocations).values({
           name: input.name,
           address: input.address || null,
           latitude: String(input.latitude),
           longitude: String(input.longitude),
-          radiusMeters: input.radiusMeters,
+          radiusMeters,
           isActive: "yes",
         });
-        return { id: Number(result[0].insertId) };
+        return { id: Number(result[0].insertId), radiusMeters };
       }),
 
     todayMine: staffProcedure.query(async ({ ctx }) => {
