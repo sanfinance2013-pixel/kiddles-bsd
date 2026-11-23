@@ -341,7 +341,7 @@ export const officeLocations = mysqlTable("officeLocations", {
   address: text("address"),
   latitude: varchar("latitude", { length: 24 }).notNull(),
   longitude: varchar("longitude", { length: 24 }).notNull(),
-  radiusMeters: int("radiusMeters").default(1).notNull(),
+  radiusMeters: int("radiusMeters").default(50).notNull(),
   isActive: mysqlEnum("isActive", ["yes", "no"]).default("yes").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
