@@ -64,6 +64,13 @@
       "when": 1793879578554,
       "tag": "0008_mean_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1795000000000,
+      "tag": "0009_staff_attendance",
+      "breakpoints": true
     }
   ]
 }
