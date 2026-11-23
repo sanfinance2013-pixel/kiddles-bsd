@@ -49,7 +49,8 @@ const DEFAULT_OFFICE = {
   address: "West Village Business Park 2, D-8, Kabupaten Tangerang",
   latitude: "-6.3018",
   longitude: "106.6537",
-  radiusMeters: 1,
+  /** Radius praktis agar GPS ponsel bisa check-in; titik tetap ditentukan admin */
+  radiusMeters: 50,
 };
 const hashQrToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const newQrToken = () => `KBSQR.${randomBytes(24).toString("base64url")}`;
@@ -670,17 +671,40 @@ export const domainRouter = router({
     office: staffProcedure.query(async () => {
       const db = await getDb();
       if (db) {
-        const rows = await db.select().from(officeLocations).where(eq(officeLocations.isActive, "yes")).orderBy(desc(officeLocations.updatedAt)).limit(5);
-        if (rows[0]) {
+        try {
+          const rows = await db.select().from(officeLocations).where(eq(officeLocations.isActive, "yes")).orderBy(desc(officeLocations.updatedAt)).limit(5);
+          if (rows[0]) {
+            return {
+              id: rows[0].id,
+              name: rows[0].name,
+              address: rows[0].address,
+              latitude: Number(rows[0].latitude),
+              longitude: Number(rows[0].longitude),
+              radiusMeters: rows[0].radiusMeters,
+              source: "db" as const,
+            };
+          }
+          // Auto-seed satu titik default agar user bisa langsung coba
+          const inserted = await db.insert(officeLocations).values({
+            name: DEFAULT_OFFICE.name,
+            address: DEFAULT_OFFICE.address,
+            latitude: DEFAULT_OFFICE.latitude,
+            longitude: DEFAULT_OFFICE.longitude,
+            radiusMeters: DEFAULT_OFFICE.radiusMeters,
+            isActive: "yes",
+          });
           return {
-            id: rows[0].id,
-            name: rows[0].name,
-            address: rows[0].address,
-            latitude: Number(rows[0].latitude),
-            longitude: Number(rows[0].longitude),
-            radiusMeters: rows[0].radiusMeters,
-            source: "db" as const,
+            id: Number(inserted[0].insertId),
+            name: DEFAULT_OFFICE.name,
+            address: DEFAULT_OFFICE.address,
+            latitude: Number(DEFAULT_OFFICE.latitude),
+            longitude: Number(DEFAULT_OFFICE.longitude),
+            radiusMeters: DEFAULT_OFFICE.radiusMeters,
+            source: "seeded" as const,
           };
+        } catch (error) {
+          console.error("[staffAttendance.office]", error);
+          // Tabel belum dimigrasi — fallback default agar UI tidak blank
         }
       }
       return {
@@ -700,13 +724,13 @@ export const domainRouter = router({
         address: z.string().trim().max(300).optional(),
         latitude: z.number().min(-90).max(90),
         longitude: z.number().min(-180).max(180),
-        // Toleransi tetap 1 meter — admin hanya menentukan titik lokasi
-        radiusMeters: z.number().int().min(1).max(1).default(1).optional(),
+        /** Radius meter (default 50). GPS ponsel jarang akurat <10 m. */
+        radiusMeters: z.number().int().min(1).max(500).default(50).optional(),
       }))
       .mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw unavailable();
-        const radiusMeters = 1;
+        const radiusMeters = input.radiusMeters ?? 50;
         const existing = await db.select().from(officeLocations).where(eq(officeLocations.isActive, "yes")).limit(1);
         if (existing[0]) {
           await db.update(officeLocations).set({
@@ -765,6 +789,7 @@ export const domainRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw unavailable();
+        // Pastikan migrasi 0009 sudah dijalankan (tabel staffAttendance / officeLocations)
 
         // Resolve office
         let officeId: number | null = null;
@@ -781,10 +806,12 @@ export const domainRouter = router({
 
         const distance = Math.round(haversineMeters(input.latitude, input.longitude, officeLat, officeLng));
         const accuracy = input.accuracyMeters != null ? Math.round(input.accuracyMeters) : null;
+        // Terima jika dalam radius, ATAU jarak masih dalam akurasi GPS (agar user bisa coba di lapangan)
+        const effectiveLimit = Math.max(radius, accuracy != null ? Math.min(accuracy, 80) : radius);
 
         let status: "ok" | "out_of_range" | "low_accuracy" | "pending_review" = "ok";
-        if (distance > radius) status = "out_of_range";
-        else if (accuracy != null && accuracy > 80) status = "low_accuracy";
+        if (distance > effectiveLimit) status = "out_of_range";
+        else if (distance > radius || (accuracy != null && accuracy > 40)) status = "low_accuracy";
 
         // Upload selfie
         const raw = input.photoBase64.replace(/^data:image\/\w+;base64,/, "");
@@ -823,7 +850,7 @@ export const domainRouter = router({
           });
           throw new TRPCError({
             code: "FORBIDDEN",
-            message: `Anda di luar area kantor (±${radius} m). Jarak saat ini ~${distance} m. Absensi ditolak tetapi dicatat untuk audit.`,
+            message: `Di luar area kantor (batas efektif ~${effectiveLimit} m, radius titik ${radius} m). Jarak Anda ~${distance} m. Minta admin set ulang titik kantor di lokasi nyata, atau dekat ke titik tersebut.`,
           });
         }
 
