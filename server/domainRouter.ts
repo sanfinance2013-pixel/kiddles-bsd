@@ -465,8 +465,35 @@ export const domainRouter = router({
     packages: managerProcedure.query(async () => {
       const db = await getDb();
       if (!db) return [];
-      return db.select().from(packages).where(eq(packages.isActive, 1)).orderBy(packages.name);
+      let rows = await db.select().from(packages).where(eq(packages.isActive, 1)).orderBy(packages.name);
+      if (!rows.length) {
+        const defaults = [
+          { name: "Kinder Term 4", program: "Kinder", price: 1_850_000, sessionCount: 8, isActive: 1 },
+          { name: "Primary Term 4", program: "Primary", price: 2_250_000, sessionCount: 8, isActive: 1 },
+          { name: "Conversation Club", program: "Conversation", price: 1_200_000, sessionCount: 6, isActive: 1 },
+        ];
+        for (const pkg of defaults) {
+          await db.insert(packages).values(pkg);
+        }
+        rows = await db.select().from(packages).where(eq(packages.isActive, 1)).orderBy(packages.name);
+      }
+      return rows;
     }),
+    createPackage: managerProcedure
+      .input(z.object({
+        name: z.string().trim().min(2).max(120),
+        program: z.string().trim().min(2).max(80),
+        price: z.number().int().positive(),
+        sessionCount: z.number().int().min(1).max(200),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        const result = await db.insert(packages).values({ ...input, isActive: 1 });
+        const id = Number(result[0].insertId);
+        await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "package", entityId: id, action: "created" });
+        return { id };
+      }),
     activeClassCandidates: managerProcedure.query(async () => {
       const db = await getDb();
       if (!db) return [];
@@ -576,6 +603,63 @@ export const domainRouter = router({
       if (!db) return [];
       return db.select().from(sessions).where(isNull(sessions.deletedAt)).orderBy(sessions.startsAt).limit(50);
     }),
+    create: staffProcedure
+      .input(z.object({
+        className: z.string().trim().min(2).max(160),
+        program: z.string().trim().min(2).max(80),
+        room: z.string().trim().max(120).optional(),
+        startsAt: z.coerce.date(),
+        endsAt: z.coerce.date(),
+        activateQr: z.boolean().default(false),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        if (input.endsAt <= input.startsAt) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Waktu selesai harus setelah waktu mulai." });
+        }
+        const activate = input.activateQr;
+        const result = await db.insert(sessions).values({
+          className: input.className,
+          program: input.program,
+          room: input.room || null,
+          teacherUserId: ctx.user.id,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          status: activate ? "active" : "scheduled",
+          qrStatus: activate ? "active" : "inactive",
+          qrActivatedAt: activate ? new Date() : null,
+        });
+        const id = Number(result[0].insertId);
+        await db.insert(activityLogs).values({
+          actorUserId: ctx.user.id,
+          entityType: "session",
+          entityId: id,
+          action: activate ? "created_qr_active" : "created",
+        });
+        return { id };
+      }),
+    /** Buat sesi demo yang sedang berlangsung (untuk uji scan QR) */
+    createDemoNow: staffProcedure.mutation(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) throw unavailable();
+      const startsAt = new Date(Date.now() - 15 * 60 * 1000);
+      const endsAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      const result = await db.insert(sessions).values({
+        className: "Demo Primary — uji QR",
+        program: "Primary",
+        room: "Ruang 01",
+        teacherUserId: ctx.user.id,
+        startsAt,
+        endsAt,
+        status: "active",
+        qrStatus: "active",
+        qrActivatedAt: new Date(),
+      });
+      const id = Number(result[0].insertId);
+      await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "session", entityId: id, action: "created_demo_now" });
+      return { id, startsAt, endsAt };
+    }),
     setQrStatus: staffProcedure
       .input(z.object({ sessionId: staffId, qrStatus: z.enum(["inactive", "active", "closed", "cancelled"]) }))
       .mutation(async ({ input, ctx }) => {
@@ -584,8 +668,18 @@ export const domainRouter = router({
         const [session] = await db.select().from(sessions).where(eq(sessions.id, input.sessionId)).limit(1);
         if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Pertemuan tidak ditemukan." });
         const now = new Date();
-        if (input.qrStatus === "active" && !isWithinSessionWindow(session, now)) throw new TRPCError({ code: "FORBIDDEN", message: "QR hanya dapat diaktifkan pada jam kelas yang terjadwal." });
-        await db.update(sessions).set({ qrStatus: input.qrStatus, qrActivatedAt: input.qrStatus === "active" ? now : session.qrActivatedAt, qrClosedAt: input.qrStatus === "closed" ? now : session.qrClosedAt, status: input.qrStatus === "active" ? "active" : session.status }).where(eq(sessions.id, input.sessionId));
+        // Izinkan aktifkan jika dalam window ATAU admin/owner override untuk uji
+        const within = isWithinSessionWindow(session, now);
+        const isAdmin = ["admin", "owner"].includes(ctx.user.role);
+        if (input.qrStatus === "active" && !within && !isAdmin) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "QR hanya dapat diaktifkan pada jam kelas yang terjadwal." });
+        }
+        await db.update(sessions).set({
+          qrStatus: input.qrStatus,
+          qrActivatedAt: input.qrStatus === "active" ? now : session.qrActivatedAt,
+          qrClosedAt: input.qrStatus === "closed" ? now : session.qrClosedAt,
+          status: input.qrStatus === "active" ? "active" : session.status,
+        }).where(eq(sessions.id, input.sessionId));
         await db.insert(activityLogs).values({ actorUserId: ctx.user.id, entityType: "session", entityId: input.sessionId, action: `qr:${input.qrStatus}` });
         return { success: true };
       }),
