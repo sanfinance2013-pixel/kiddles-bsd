@@ -752,6 +752,83 @@ export const domainRouter = router({
       }),
   }),
 
+
+  /** Tracking piutang, utang, arus kas (agregasi dari invoice + procurement) */
+  cashflow: router({
+    summary: managerProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) {
+        return {
+          piutang: { total: 0, count: 0, items: [] as Array<Record<string, unknown>> },
+          utang: { total: 0, count: 0, items: [] as Array<Record<string, unknown>> },
+          cashflow: { masuk: 0, keluar: 0, netto: 0 },
+          periodLabel: "Database belum tersedia",
+        };
+      }
+
+      const invRows = await db.select().from(invoices).where(isNull(invoices.deletedAt)).orderBy(desc(invoices.dueDate)).limit(300);
+      const procRows = await db.select().from(procurements).where(isNull(procurements.deletedAt)).orderBy(desc(procurements.purchaseDate)).limit(300);
+
+      const piutangItems = invRows
+        .filter((inv) => inv.status !== "cancelled" && inv.status !== "paid")
+        .map((inv) => {
+          const outstanding = Math.max(0, inv.total - inv.paidAmount);
+          return {
+            id: inv.id,
+            ref: inv.invoiceNumber,
+            party: `Murid #${inv.studentId}`,
+            total: inv.total,
+            paid: inv.paidAmount,
+            outstanding,
+            status: inv.status,
+            dueDate: inv.dueDate,
+            type: "piutang" as const,
+          };
+        })
+        .filter((x) => x.outstanding > 0);
+
+      const utangItems = procRows
+        .filter((p) => p.paymentMethod === "payable" && p.status !== "cancelled" && p.status !== "paid")
+        .map((p) => ({
+          id: p.id,
+          ref: p.purchaseNumber,
+          party: p.vendorName,
+          total: p.total,
+          paid: p.status === "paid" ? p.total : 0,
+          outstanding: p.status === "paid" ? 0 : p.total,
+          status: p.status,
+          dueDate: p.purchaseDate,
+          itemName: p.itemName,
+          type: "utang" as const,
+        }));
+
+      // Arus kas kasar: invoice yang sudah dibayar (masuk) + procurement cash/bank (keluar)
+      const masuk = invRows.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+      const keluar = procRows
+        .filter((p) => p.paymentMethod !== "payable" && p.status !== "cancelled")
+        .reduce((sum, p) => sum + p.total, 0);
+
+      return {
+        piutang: {
+          total: piutangItems.reduce((s, i) => s + i.outstanding, 0),
+          count: piutangItems.length,
+          items: piutangItems.slice(0, 50),
+        },
+        utang: {
+          total: utangItems.reduce((s, i) => s + i.outstanding, 0),
+          count: utangItems.length,
+          items: utangItems.slice(0, 50),
+        },
+        cashflow: {
+          masuk,
+          keluar,
+          netto: masuk - keluar,
+        },
+        periodLabel: "Semua data tercatat (agregasi live)",
+      };
+    }),
+  }),
+
   payroll: router({
     list: managerProcedure.query(async () => {
       const db = await getDb();
