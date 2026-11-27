@@ -462,6 +462,119 @@ export const domainRouter = router({
       ]);
       return rows.map((invoice) => ({ ...invoice, student: studentRows.find((student) => student.id === invoice.studentId) ?? null, package: packageRows.find((item) => item.id === invoice.packageId) ?? null }));
     }),
+    /** Detail invoice + timeline proses (diterbitkan → bukti → verifikasi → dibukukan) */
+    getDetail: protectedProcedure
+      .input(z.object({ invoiceId: staffId.optional(), invoiceNumber: z.string().trim().min(3).max(48).optional() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw unavailable();
+        if (!input.invoiceId && !input.invoiceNumber) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Pilih invoiceId atau invoiceNumber." });
+        }
+        const invRows = input.invoiceId
+          ? await db.select().from(invoices).where(and(eq(invoices.id, input.invoiceId), isNull(invoices.deletedAt))).limit(1)
+          : await db.select().from(invoices).where(and(eq(invoices.invoiceNumber, input.invoiceNumber!), isNull(invoices.deletedAt))).limit(1);
+        const invoice = invRows[0];
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND", message: "Invoice tidak ditemukan." });
+
+        const [student] = await db.select().from(students).where(eq(students.id, invoice.studentId)).limit(1);
+        const pkg = invoice.packageId
+          ? (await db.select().from(packages).where(eq(packages.id, invoice.packageId)).limit(1))[0]
+          : null;
+        const evidence = await db.select().from(paymentEvidence)
+          .where(and(eq(paymentEvidence.invoiceId, invoice.id), isNull(paymentEvidence.deletedAt)))
+          .orderBy(desc(paymentEvidence.createdAt));
+        const logs = await db.select().from(activityLogs)
+          .where(and(eq(activityLogs.entityType, "invoice"), eq(activityLogs.entityId, invoice.id)))
+          .orderBy(desc(activityLogs.createdAt))
+          .limit(50);
+        const evidenceLogs = evidence.length
+          ? await db.select().from(activityLogs)
+              .where(eq(activityLogs.entityType, "payment_evidence"))
+              .orderBy(desc(activityLogs.createdAt))
+              .limit(100)
+          : [];
+        const relatedEvidenceLogs = evidenceLogs.filter((l) => evidence.some((e) => e.id === l.entityId));
+
+        const outstanding = Math.max(0, invoice.total - invoice.paidAmount);
+        const steps: Array<{ key: string; label: string; at: Date | null; done: boolean; detail: string }> = [];
+
+        steps.push({
+          key: "created",
+          label: "Invoice diterbitkan",
+          at: invoice.createdAt,
+          done: true,
+          detail: `No. ${invoice.invoiceNumber} · total ${invoice.total}`,
+        });
+
+        const firstEvidence = [...evidence].sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt))[0];
+        steps.push({
+          key: "evidence_uploaded",
+          label: "Bukti pembayaran diunggah",
+          at: firstEvidence?.createdAt ?? null,
+          done: Boolean(firstEvidence),
+          detail: firstEvidence
+            ? `${evidence.length} berkas · status terakhir: ${evidence[0]?.status}`
+            : "Belum ada bukti diunggah",
+        });
+
+        const approved = evidence.find((e) => e.status === "approved");
+        const reviewed = evidence.find((e) => e.reviewedAt);
+        steps.push({
+          key: "verified",
+          label: "Diverifikasi admin",
+          at: approved?.reviewedAt ?? reviewed?.reviewedAt ?? null,
+          done: Boolean(approved) || invoice.status === "paid" || invoice.status === "partial",
+          detail: approved
+            ? `Bukti disetujui · nominal bukti ${approved.amount}`
+            : evidence.some((e) => e.status === "rejected")
+              ? "Ada bukti ditolak"
+              : "Menunggu verifikasi",
+        });
+
+        const paidDone = invoice.status === "paid" || invoice.paidAmount >= invoice.total;
+        steps.push({
+          key: "booked",
+          label: "Dibukukan / dilunasi",
+          at: paidDone ? (invoice.updatedAt || invoice.createdAt) : null,
+          done: paidDone,
+          detail: paidDone
+            ? `Status ${invoice.status} · dibayar ${invoice.paidAmount} dari ${invoice.total}`
+            : `Sisa piutang ${outstanding} · status ${invoice.status}`,
+        });
+
+        const overdue = invoice.status === "overdue" || (!paidDone && new Date(invoice.dueDate) < new Date());
+        steps.push({
+          key: "due",
+          label: "Jatuh tempo",
+          at: invoice.dueDate,
+          done: true,
+          detail: overdue ? "Lewat jatuh tempo / overdue" : "Dalam periode jatuh tempo",
+        });
+
+        return {
+          invoice: {
+            ...invoice,
+            outstanding,
+            student: student ?? null,
+            package: pkg ?? null,
+          },
+          evidence,
+          timeline: steps,
+          activity: [...logs, ...relatedEvidenceLogs]
+            .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+            .slice(0, 40)
+            .map((l) => ({
+              id: l.id,
+              action: l.action,
+              entityType: l.entityType,
+              entityId: l.entityId,
+              createdAt: l.createdAt,
+              metadata: l.metadata,
+            })),
+        };
+      }),
+
     packages: managerProcedure.query(async () => {
       const db = await getDb();
       if (!db) return [];
