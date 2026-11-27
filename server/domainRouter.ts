@@ -612,6 +612,135 @@ export const domainRouter = router({
       if (!db) return [];
       return db.select({ id: students.id, studentNo: students.studentNo, fullName: students.fullName, program: students.program, remainingSessions: students.remainingSessions }).from(students).where(and(eq(students.status, "active"), eq(students.classStatus, "active"), isNull(students.deletedAt))).orderBy(students.fullName).limit(500);
     }),
+
+    /** Inject data contoh untuk demo tracking invoice (murid + paket + invoice + bukti) */
+    seedDemoTracking: managerProcedure.mutation(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) throw unavailable();
+
+      // Paket
+      let packageId: number;
+      const existingPkg = await db.select().from(packages).where(eq(packages.isActive, 1)).limit(1);
+      if (existingPkg[0]) {
+        packageId = existingPkg[0].id;
+      } else {
+        const pr = await db.insert(packages).values({
+          name: "Kinder Term Demo",
+          program: "Kinder",
+          price: 1_000_000,
+          sessionCount: 8,
+          isActive: 1,
+        });
+        packageId = Number(pr[0].insertId);
+      }
+
+      // Murid contoh
+      const studentNo = `KBS-DEMO-${String(Date.now()).slice(-5)}`;
+      const sr = await db.insert(students).values({
+        studentNo,
+        fullName: "Nadine Putri (Demo)",
+        guardianName: "Ibu Sari Demo",
+        guardianPhone: "081234567890",
+        program: "Kinder",
+        remainingSessions: 6,
+        classStatus: "active",
+        status: "active",
+      });
+      const studentId = Number(sr[0].insertId);
+
+      // Invoice
+      const invoiceNumber = `INV-DEMO-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${String(Date.now()).slice(-4)}`;
+      const due = new Date();
+      due.setDate(due.getDate() + 14);
+      const ir = await db.insert(invoices).values({
+        invoiceNumber,
+        studentId,
+        packageId,
+        subtotal: 1_000_000,
+        discount: 0,
+        adminFee: 0,
+        tax: 0,
+        total: 1_000_000,
+        paidAmount: 500_000,
+        status: "partial",
+        dueDate: due,
+      });
+      const invoiceId = Number(ir[0].insertId);
+      await db.insert(activityLogs).values({
+        actorUserId: ctx.user.id,
+        entityType: "invoice",
+        entityId: invoiceId,
+        action: "created",
+        metadata: JSON.stringify({ invoiceNumber, demo: true }),
+      });
+
+      // Bukti sebagian (approved) — objectKey dummy
+      const er = await db.insert(paymentEvidence).values({
+        invoiceId,
+        objectKey: `demo/evidence-${invoiceId}.jpg`,
+        stableUrl: `/manus-storage/demo/evidence-${invoiceId}.jpg`,
+        mimeType: "image/jpeg",
+        amount: 500_000,
+        status: "approved",
+        note: "Transfer BCA demo — cicilan 1",
+        createdBy: ctx.user.id,
+        reviewedBy: ctx.user.id,
+        reviewedAt: new Date(),
+      });
+      const evidenceId = Number(er[0].insertId);
+      await db.insert(activityLogs).values({
+        actorUserId: ctx.user.id,
+        entityType: "payment_evidence",
+        entityId: evidenceId,
+        action: "uploaded",
+        metadata: JSON.stringify({ invoiceId, demo: true }),
+      });
+      await db.insert(activityLogs).values({
+        actorUserId: ctx.user.id,
+        entityType: "payment_evidence",
+        entityId: evidenceId,
+        action: "reviewed:approved",
+        metadata: JSON.stringify({ invoiceId, demo: true }),
+      });
+
+      // Invoice kedua: belum bayar (full piutang)
+      const inv2 = `INV-DEMO-UNPAID-${String(Date.now()).slice(-4)}`;
+      const due2 = new Date();
+      due2.setDate(due2.getDate() - 3); // overdue-ish
+      const ir2 = await db.insert(invoices).values({
+        invoiceNumber: inv2,
+        studentId,
+        packageId,
+        subtotal: 1_000_000,
+        discount: 0,
+        adminFee: 0,
+        tax: 0,
+        total: 1_000_000,
+        paidAmount: 0,
+        status: "overdue",
+        dueDate: due2,
+      });
+      const invoiceId2 = Number(ir2[0].insertId);
+      await db.insert(activityLogs).values({
+        actorUserId: ctx.user.id,
+        entityType: "invoice",
+        entityId: invoiceId2,
+        action: "created",
+        metadata: JSON.stringify({ invoiceNumber: inv2, demo: true }),
+      });
+
+      return {
+        studentId,
+        studentNo,
+        packageId,
+        invoices: [
+          { id: invoiceId, invoiceNumber, status: "partial" },
+          { id: invoiceId2, invoiceNumber: inv2, status: "overdue" },
+        ],
+        message: "Data contoh tracking siap. Klik nomor invoice di daftar Billing.",
+      };
+    }),
+
     createInvoice: managerProcedure
       .input(z.object({ studentId: staffId, packageId: staffId.nullish(), subtotal: z.number().int().min(0), discount: z.number().int().min(0).default(0), adminFee: z.number().int().min(0).default(0), tax: z.number().int().min(0).default(0), dueDate: z.coerce.date() }))
       .mutation(async ({ input, ctx }) => {
